@@ -100,7 +100,7 @@
         <div class="card sub-stat">
           <div class="sub-stat-icon">📈</div>
           <div>
-            <div class="sub-stat-label">Savings Rate</div>
+            <div class="sub-stat-label">Persentase Menabung <span class="term-en">(Savings Rate)</span></div>
             <div class="sub-stat-row">
               <span class="sub-stat-value" id="valSavingsRate">0%</span>
               <span class="sc-compare flat" id="cmpSavingsRate" aria-label="Perubahan dari bulan lalu">— 0%</span>
@@ -226,7 +226,7 @@
             <canvas id="needsDonut"></canvas>
             <div class="donut-center">
               <div class="donut-pct" id="needsPct">0%</div>
-              <div class="donut-lbl">dari income</div>
+              <div class="donut-lbl">dari pemasukan</div>
             </div>
           </div>
           <div class="budget-stats">
@@ -243,7 +243,7 @@
             <canvas id="wantsDonut"></canvas>
             <div class="donut-center">
               <div class="donut-pct" id="wantsPct">0%</div>
-              <div class="donut-lbl">dari income</div>
+              <div class="donut-lbl">dari pemasukan</div>
             </div>
           </div>
           <div class="budget-stats">
@@ -260,7 +260,7 @@
             <canvas id="investDonut"></canvas>
             <div class="donut-center">
               <div class="donut-pct" id="investPct">0%</div>
-              <div class="donut-lbl">dari income</div>
+              <div class="donut-lbl">dari pemasukan</div>
             </div>
           </div>
           <div class="budget-stats">
@@ -297,40 +297,40 @@
 
       <div class="ratio-grid">
         <div class="ratio-card">
-          <div class="sc-label">Savings Rate</div>
+          <div class="sc-label">Persentase Menabung <span class="term-en">(Savings Rate)</span></div>
           <div class="ratio-val" id="ratioSavings">0%</div>
           <span id="ratioSavingsStatus" class="ratio-status">—</span>
           <div class="sc-prev mt-10">Target Ideal: ≥ 20%</div>
         </div>
         <div class="ratio-card">
-          <div class="sc-label">Beban Utang (DSR)</div>
+          <div class="sc-label">Beban Utang <span class="term-en">(DSR)</span></div>
           <div class="ratio-val" id="dsrVal">0%</div>
           <span id="dsrStatus" class="ratio-status">—</span>
           <div class="sc-prev mt-10">Batas Aman: &lt; 30%</div>
         </div>
         <div class="ratio-card">
-          <div class="sc-label">Dana Darurat</div>
+          <div class="sc-label">Dana Darurat <span class="term-en">(Emergency Fund)</span></div>
           <div class="ratio-val" id="efVal">0×</div>
           <span id="efStatus" class="ratio-status">—</span>
-          <div class="sc-prev mt-10">Target Ideal: 3-6×</div>
+          <div class="sc-prev mt-10">Target Ideal: 3-6× pengeluaran/bulan</div>
         </div>
         <div class="ratio-card">
-          <div class="sc-label">Solvency Ratio</div>
+          <div class="sc-label">Aset Bersih dari Hutang <span class="term-en">(Solvency)</span></div>
           <div class="ratio-val" id="solvencyVal">0%</div>
           <span id="solvencyStatus" class="ratio-status">—</span>
           <div class="sc-prev mt-10">Target: ≥ 50%</div>
         </div>
         <div class="ratio-card">
-          <div class="sc-label">Investment Asset</div>
+          <div class="sc-label">Porsi Aset Berkembang <span class="term-en">(Investment Ratio)</span></div>
           <div class="ratio-val" id="investRatioVal">0%</div>
           <span id="investRatioStatus" class="ratio-status">—</span>
-          <div class="sc-prev mt-10">Naik dengan usia</div>
+          <div class="sc-prev mt-10">Naik seiring usia</div>
         </div>
         <div class="ratio-card">
-          <div class="sc-label">Liquidity Ratio</div>
+          <div class="sc-label">Cadangan Uang Cair <span class="term-en">(Liquidity Ratio)</span></div>
           <div class="ratio-val" id="liquidVal">0×</div>
           <span id="liquidStatus" class="ratio-status">—</span>
-          <div class="sc-prev mt-10">Target: ≥ 3×</div>
+          <div class="sc-prev mt-10">Target: ≥ 3× pengeluaran/bulan</div>
         </div>
       </div>
 
@@ -369,12 +369,12 @@
           <div class="forecast-meta" id="forecastMeta"></div>
         </div>
         <div class="card runway-card">
-          <div class="card-title">Ketahanan Dana (Runway)</div>
+          <div class="card-title">Ketahanan Dana <span class="term-en">(Runway)</span></div>
           <div class="runway-num" id="runwayDays">—</div>
           <div class="runway-sub" id="runwaySub">hari ke depan</div>
           <div class="runway-meta">
-            <div><span class="muted">Burn rate:</span> <b id="burnRate">Rp 0</b>/hari</div>
-            <div><span class="muted">Income harian:</span> <b id="incomeRate">Rp 0</b>/hari</div>
+            <div><span class="muted">Pengeluaran:</span> <b id="burnRate">Rp 0</b>/hari <span class="term-en">(Burn Rate)</span></div>
+            <div><span class="muted">Pemasukan:</span> <b id="incomeRate">Rp 0</b>/hari</div>
           </div>
           <div id="runwayBanner" class="runway-banner"></div>
         </div>
@@ -543,26 +543,7 @@
             <div class="form-group">
               <label class="form-label" for="expCat">Kategori *</label>
               <select class="form-input" id="expCat">
-                <option value="">— Pilih Kategori —</option>
-                <optgroup label="🏠 Kebutuhan">
-                  <option>Makanan Pokok &amp; Minuman</option>
-                  <option>Transportasi</option>
-                  <option>Rumah &amp; Utilitas</option>
-                  <option>Kesehatan &amp; Proteksi</option>
-                  <option>Kewajiban &amp; Utang</option>
-                  <option>Pendidikan</option>
-                  <option>Keluarga &amp; Tanggungan</option>
-                </optgroup>
-                <optgroup label="🛍️ Keinginan">
-                  <option>Makan di Luar &amp; Jajanan</option>
-                  <option>Hiburan &amp; Streaming</option>
-                  <option>Belanja Online &amp; Fashion</option>
-                  <option>Hobi &amp; Olahraga</option>
-                  <option>Traveling &amp; Wisata</option>
-                  <option>Perawatan &amp; Kecantikan</option>
-                  <option>Sosial, Amal &amp; Hadiah</option>
-                </optgroup>
-                <option>Lain-lain</option>
+                <option value="">— Memuat kategori… —</option>
               </select>
             </div>
             <div class="form-group">
@@ -792,6 +773,39 @@
           </div>
         </div>
         <button class="btn-submit" id="btnSubmitGoal">Simpan Tujuan 🎯</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ MODAL: Goal Deposit (Setoran ke Tujuan) ═══════════════ -->
+  <div class="modal-overlay" id="goalDepositModalOverlay">
+    <div class="modal modal-narrow" role="dialog" aria-modal="true" aria-labelledby="goalDepositTitle">
+      <div class="modal-header">
+        <div class="modal-top">
+          <div class="modal-heading" id="goalDepositTitle">💰 Setoran ke Tujuan</div>
+          <button class="modal-close" data-close="goalDepositModalOverlay" aria-label="Tutup">×</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="depositGoalRow" />
+        <div class="goal-deposit-info" id="depositGoalInfo">
+          <div class="muted micro-label">Tujuan</div>
+          <div id="depositGoalName" style="font-weight:700;font-size:15px;margin-bottom:4px;">—</div>
+          <div class="muted" id="depositGoalProgress" style="font-size:12px;">—</div>
+        </div>
+        <div class="form-row single mb-14" style="margin-top:14px;">
+          <div class="form-group">
+            <label class="form-label" for="depositAmount">Nominal Setoran *</label>
+            <div class="amount-input-wrap">
+              <span class="amount-prefix">Rp</span>
+              <input type="text" inputmode="numeric" class="form-input currency-mask" id="depositAmount" placeholder="0" />
+            </div>
+          </div>
+        </div>
+        <div class="muted micro-label" style="margin-bottom:14px;">
+          💡 Tips: catat juga sebagai <b>Tabungan</b> di menu Transaksi supaya saldo dompet ikut terupdate.
+        </div>
+        <button class="btn-submit btn-success" id="btnSubmitDeposit">Tambah Setoran 💰</button>
       </div>
     </div>
   </div>

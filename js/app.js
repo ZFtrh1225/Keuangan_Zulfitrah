@@ -13,25 +13,67 @@
   const charts = MT.charts;
 
   // ────────────────────────────────────────────────────────────────
-  //  SUBCATEGORY MAP (frontend hint)
+  //  CATEGORIES (dynamically loaded from backend, single source of truth)
   // ────────────────────────────────────────────────────────────────
-  const SUBCATS = {
-    'Makanan Pokok & Minuman': ['Belanja Supermarket/Pasar', 'Sembako & Beras', 'Lauk Pauk/Warteg', 'Sayur & Buah', 'Air Galon & Gas LPG', 'Lainnya'],
-    'Transportasi':            ['Bensin/BBM', 'Ojek/Taksi Online', 'Angkutan Umum/KRL', 'Parkir & Tol', 'Servis & Cuci Kendaraan', 'Lainnya'],
-    'Rumah & Utilitas':        ['Sewa Kos/Kontrakan', 'Listrik (PLN)', 'Air (PDAM)', 'Internet/WiFi', 'Pulsa & Paket Data', 'Iuran Keamanan/Sampah', 'Keperluan Mandi/Cuci', 'Lainnya'],
-    'Kesehatan & Proteksi':    ['Obat & Apotek', 'Dokter/Klinik/RS', 'Vitamin & Suplemen', 'BPJS Kesehatan', 'Asuransi (Kesehatan/Jiwa)', 'Alat Kesehatan', 'Lainnya'],
-    'Kewajiban & Utang':       ['Cicilan Paylater/Pinjol', 'Tagihan Kartu Kredit', 'Cicilan KPR', 'Cicilan Kendaraan', 'Pajak (PBB/STNK)', 'Biaya Admin/Bank', 'Lainnya'],
-    'Pendidikan':              ['SPP/UKT/Uang Kuliah', 'Buku & Jurnal Kuliah', 'Kursus/Sertifikasi', 'Alat Tulis/Software', 'Pelatihan/Workshop', 'Lainnya'],
-    'Keluarga & Tanggungan':   ['Uang Orang Tua', 'Kebutuhan Adik/Anak', 'Asisten Rumah Tangga', 'Lainnya'],
-    'Makan di Luar & Jajanan': ['Cafe & Kopi', 'Restoran/Fast Food', 'GoFood/GrabFood', 'Snack & Jajanan', 'Lainnya'],
-    'Hiburan & Streaming':     ['Netflix/Disney/Prime', 'Spotify/Apple Music', 'Bioskop/Konser', 'Game Online/Top Up', 'Buku Fiksi/Komik', 'Lainnya'],
-    'Belanja Online & Fashion':['Pakaian & Baju', 'Sepatu & Tas', 'Aksesoris/Perhiasan', 'Elektronik & Gadget', 'Perabot & Dekorasi Kamar', 'Lainnya'],
-    'Hobi & Olahraga':         ['Gym/Sewa Lapangan', 'Peralatan Olahraga', 'Komunitas Hobi', 'Merchandise/Koleksi', 'Lainnya'],
-    'Traveling & Wisata':      ['Tiket Pesawat/Kereta', 'Hotel/Penginapan', 'Tiket Wisata/Wahana', 'Oleh-oleh', 'Paspor/Visa', 'Lainnya'],
-    'Perawatan & Kecantikan':  ['Skincare & Bodycare', 'Makeup & Kosmetik', 'Salon & Barbershop', 'Spa & Pijat', 'Parfum', 'Lainnya'],
-    'Sosial, Amal & Hadiah':   ['Sedekah/Infaq', 'Zakat', 'Hadiah/Kado Teman', 'Traktir Teman/Pacar', 'Sumbangan Pernikahan', 'Lainnya'],
-    'Lain-lain':               ['Tak Terduga', 'Uang Hilang/Kecurian', 'Lainnya']
-  };
+  // Daftar kategori + subkategori sekarang dimuat dari backend Code.gs
+  // (lihat const CATEGORIES & endpoint getCategories). Frontend tidak
+  // hardcode lagi — sehingga menambah kategori cukup edit 1 file di server.
+
+  /**
+   * Cari subkategori untuk kategori bernama `cat` dari state.categories.
+   * Fallback ke generic ['Umum', 'Lainnya'] kalau belum dimuat.
+   */
+  function getSubcatsFor(cat) {
+    const cats = (state.categories || []);
+    const found = cats.find(c => c.name === cat);
+    return (found && found.subcategories && found.subcategories.length)
+      ? found.subcategories
+      : ['Umum', 'Lainnya'];
+  }
+
+  /**
+   * Isi dropdown <select id="expCat"> dari state.categories.
+   * Dipanggil setelah categories berhasil di-load.
+   */
+  function populateCategoryDropdown() {
+    const sel = $('expCat');
+    if (!sel) return;
+    const prevValue = sel.value;
+    const cats = state.categories || [];
+    if (!cats.length) {
+      sel.innerHTML = '<option value="">— Memuat kategori… —</option>';
+      return;
+    }
+
+    // Group by type → Kebutuhan / Keinginan / Investasi
+    const groups = {
+      needs: { label: '🏠 Kebutuhan', items: [] },
+      wants: { label: '🛍️ Keinginan', items: [] },
+      invest: { label: '📈 Investasi & Tabungan', items: [] }
+    };
+    cats.forEach(c => {
+      const g = groups[c.type] || groups.wants;
+      g.items.push(c);
+    });
+
+    let html = '<option value="">— Pilih Kategori —</option>';
+    Object.values(groups).forEach(g => {
+      if (!g.items.length) return;
+      html += `<optgroup label="${escapeHtml(g.label)}">`;
+      g.items.forEach(c => {
+        const lbl = (c.icon ? c.icon + ' ' : '') + c.name;
+        html += `<option value="${escapeHtml(c.name)}">${escapeHtml(lbl)}</option>`;
+      });
+      html += '</optgroup>';
+    });
+    sel.innerHTML = html;
+
+    // Restore previous selection if still valid
+    if (prevValue && cats.some(c => c.name === prevValue)) {
+      sel.value = prevValue;
+      loadSubcat();
+    }
+  }
 
   // ────────────────────────────────────────────────────────────────
   //  UI HELPERS
@@ -77,6 +119,14 @@
     setupFab();
     setupSearch();
 
+    // Load kategori dari cache lokal dulu (instan), lalu fetch terbaru di background
+    const cachedCats = store.getCachedCategories();
+    if (cachedCats && cachedCats.length) {
+      store.setCategories(cachedCats);
+      populateCategoryDropdown();
+    }
+    loadCategories(); // refresh non-blocking
+
     if (!store.isOnboarded()) {
       openModal('onboardingOverlay');
       setupOnboarding();
@@ -92,6 +142,15 @@
     await loadDashboard();
     loadGoals();
     loadTransactions();
+  }
+
+  /** Fetch daftar kategori dari backend & isi dropdown. */
+  async function loadCategories() {
+    const res = await api.getCategories();
+    if (res && res.success && Array.isArray(res.categories)) {
+      store.setCategories(res.categories);
+      populateCategoryDropdown();
+    }
   }
 
   // ────────────────────────────────────────────────────────────────
@@ -205,6 +264,7 @@
     $('btnSubmitAsset').addEventListener('click', submitAsset);
     $('btnSubmitDebt').addEventListener('click', submitDebt);
     $('btnSubmitGoal').addEventListener('click', submitGoal);
+    $('btnSubmitDeposit').addEventListener('click', submitGoalDeposit);
     $('btnSubmitSettings').addEventListener('click', submitSettings);
 
     // Goals
@@ -264,7 +324,7 @@
     const sub = $('expSubcat');
     sub.innerHTML = '';
     sub.add(new Option('— Pilih Subkategori —', ''));
-    (SUBCATS[cat] || ['Umum', 'Lainnya']).forEach(s => sub.add(new Option(s, s)));
+    getSubcatsFor(cat).forEach(s => sub.add(new Option(s, s)));
   }
 
   // ────────────────────────────────────────────────────────────────
@@ -749,15 +809,15 @@
     charts.renderForecast('forecastChart', sixMonths, forecast.months);
     $('forecastMeta').innerHTML = `
       <div class="fc-stat">
-        <div class="fc-stat-lbl">Avg Income</div>
+        <div class="fc-stat-lbl">Rata-rata Pemasukan</div>
         <div class="fc-stat-val" style="color:var(--green)">${fmtRpShort(forecast.avgIncome)}</div>
       </div>
       <div class="fc-stat">
-        <div class="fc-stat-lbl">Avg Expense</div>
+        <div class="fc-stat-lbl">Rata-rata Pengeluaran</div>
         <div class="fc-stat-val" style="color:var(--red)">${fmtRpShort(forecast.avgExpense)}</div>
       </div>
       <div class="fc-stat">
-        <div class="fc-stat-lbl">Avg Saving</div>
+        <div class="fc-stat-lbl">Rata-rata Tabungan</div>
         <div class="fc-stat-val" style="color:var(--indigo)">${fmtRpShort(forecast.avgSaving)}</div>
       </div>
     `;
@@ -1077,6 +1137,7 @@
           <div class="goal-meta">
             <div>${monthsLeft != null && !done ? '~' + fmtRpShort(monthlyNeed) + '/bulan' : (done ? '🏆 Tercapai!' : 'Tanpa deadline')}</div>
             <div class="goal-actions">
+              ${done ? '' : `<button class="goal-deposit-btn" data-goal-deposit="${g.rowIndex}" aria-label="Tambah Setoran">+ Setor</button>`}
               <button class="icon-btn" data-goal-edit="${g.rowIndex}" aria-label="Edit">✏️</button>
               <button class="icon-btn" data-goal-del="${g.rowIndex}" aria-label="Hapus">🗑️</button>
             </div>
@@ -1086,6 +1147,9 @@
     }).join('');
     grid.querySelectorAll('[data-goal-edit]').forEach(b => {
       b.addEventListener('click', e => { e.stopPropagation(); openGoalModal(parseInt(b.dataset.goalEdit, 10)); });
+    });
+    grid.querySelectorAll('[data-goal-deposit]').forEach(b => {
+      b.addEventListener('click', e => { e.stopPropagation(); openGoalDepositModal(parseInt(b.dataset.goalDeposit, 10)); });
     });
     grid.querySelectorAll('[data-goal-del]').forEach(b => {
       b.addEventListener('click', async e => {
@@ -1147,6 +1211,44 @@
     } else {
       showToast('Gagal: ' + res.error, 'error');
     }
+  }
+
+  // ── Goal Deposit (tambah setoran ke goal) ──
+  function openGoalDepositModal(rowIndex) {
+    const g = state.goals.find(x => x.rowIndex === rowIndex);
+    if (!g) {
+      showToast('Tujuan tidak ditemukan', 'error');
+      return;
+    }
+    $('depositGoalRow').value = String(rowIndex);
+    $('depositGoalName').textContent = g.name || 'Tujuan';
+    const pct = g.target > 0 ? (g.saved / g.target * 100).toFixed(1) : '0';
+    const remaining = Math.max(0, g.target - g.saved);
+    $('depositGoalProgress').innerHTML =
+      `Saat ini: <b>${fmtRp(g.saved)}</b> / ${fmtRp(g.target)} (${pct}%) · Sisa: <b>${fmtRp(remaining)}</b>`;
+    $('depositAmount').value = '';
+    setupCurrencyMasks();
+    openModal('goalDepositModalOverlay');
+    setTimeout(() => $('depositAmount').focus(), 200);
+  }
+
+  async function submitGoalDeposit() {
+    const rowIndex = parseInt($('depositGoalRow').value, 10);
+    const amount = parseRp($('depositAmount').value);
+    if (!rowIndex || amount <= 0) {
+      showToast('Masukkan nominal setoran!', 'error');
+      return;
+    }
+    await submitWithGuard(async () => {
+      const res = await api.addGoalDeposit(rowIndex, amount);
+      if (res.success) {
+        showToast(res.msg || 'Setoran tersimpan', 'success');
+        closeModal('goalDepositModalOverlay');
+        loadGoals();
+      } else {
+        showToast('Gagal: ' + (res.error || 'unknown'), 'error');
+      }
+    }, 'btnSubmitDeposit', 'Menyimpan…');
   }
 
   // ────────────────────────────────────────────────────────────────
@@ -1364,23 +1466,7 @@
     out.hidden = false;
     out.innerHTML = '<div class="muted">Menganalisis data finansial Anda secara mendalam…</div>';
 
-    const summary = {
-      totalInc: fmtRp(d.summary.totalInc),
-      totalExp: fmtRp(d.summary.totalExp),
-      totalSav: fmtRp(d.summary.totalSav),
-      savingsRate: (d.summary.savingsRate || 0).toFixed(1),
-      pNeeds: d.budgeting.income > 0 ? (d.budgeting.needs / d.budgeting.income * 100).toFixed(1) : '0',
-      pWants: d.budgeting.income > 0 ? (d.budgeting.wants / d.budgeting.income * 100).toFixed(1) : '0',
-      pInvest: d.budgeting.income > 0 ? (d.budgeting.invest / d.budgeting.income * 100).toFixed(1) : '0',
-      runwayDays: d.burn && d.burn.runwayDays != null ? d.burn.runwayDays : 'tak terbatas',
-      dsr: (d.ratios.dsr || 0).toFixed(1),
-      emergencyFund: (d.ratios.emergencyFundRatio || 0).toFixed(1),
-      liquidityRatio: (d.ratios.liquidityRatio || 0).toFixed(1),
-      solvencyRatio: ((d.ratios.solvencyRatio || 0) * 100).toFixed(1),
-      investmentAssetRatio: ((d.ratios.investmentAssetRatio || 0) * 100).toFixed(1),
-      topExpense: (d.top10 && d.top10[0]) ? d.top10[0].name : 'Belum ada data'
-    };
-
+    const summary = buildGeminiPayload(d);
     const res = await api.getGeminiDeepAnalysis(summary);
     btn.disabled = false;
     btn.innerHTML = '🧠 Analisis Ulang';
@@ -1389,6 +1475,140 @@
     } else {
       out.innerHTML = '<div style="color:var(--red)">' + escapeHtml(res.error || 'Tidak ada respons') + '</div>';
     }
+  }
+
+  /**
+   * Bangun payload kaya untuk Gemini prompt.
+   * Sumber data: state.dashboard, state.goals, state.currentMonth/Year.
+   */
+  function buildGeminiPayload(d) {
+    const monthNames = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+    const m = state.currentMonth, y = state.currentYear;
+    const nextM = m === 12 ? 1 : m + 1;
+    const nextY = m === 12 ? y + 1 : y;
+
+    // ── Bulan data tersedia (untuk validasi disclaimer) ──
+    const monthsOfData = (d.sixMonths || []).filter(s => (s.income > 0 || s.expenses > 0)).length || 1;
+
+    // ── Budget rule label & target % ──
+    const ruleLabel = (d.budgeting && d.budgeting.rule) || '50/30/20';
+    const ruleParts = parseRuleLabel(ruleLabel, state.settings.customBudget);
+
+    // ── Persentase aktual ──
+    const inc = d.budgeting && d.budgeting.income > 0 ? d.budgeting.income : 0;
+    const pNeeds = inc > 0 ? (d.budgeting.needs / inc * 100).toFixed(1) : '0.0';
+    const pWants = inc > 0 ? (d.budgeting.wants / inc * 100).toFixed(1) : '0.0';
+    const pInvest = inc > 0 ? (d.budgeting.invest / inc * 100).toFixed(1) : '0.0';
+
+    // ── Net Worth trend (banding bulan ini vs sebelum) ──
+    const nwHist = (d.netWorth && d.netWorth.netWorthHistory) || [];
+    let nwTrend = 'tren belum tersedia';
+    if (nwHist.length >= 2) {
+      const cur = nwHist[nwHist.length - 1].value;
+      const prev = nwHist[nwHist.length - 2].value;
+      if (prev !== 0) {
+        const diffPct = ((cur - prev) / Math.abs(prev) * 100);
+        const arrow = diffPct > 0.5 ? 'naik' : diffPct < -0.5 ? 'turun' : 'stabil';
+        nwTrend = arrow === 'stabil'
+          ? 'stabil dibanding bulan lalu'
+          : `${arrow} ${Math.abs(diffPct).toFixed(1)}% dibanding bulan lalu`;
+      }
+    }
+
+    // ── Top 3 expense kategori ──
+    const totalExp = d.summary && d.summary.totalExp > 0 ? d.summary.totalExp : 1;
+    const topExpenses = ((d.top10 || []).slice(0, 3)).map(t => ({
+      name: t.name,
+      amount: fmtRp(t.amount),
+      pct: (t.amount / totalExp * 100).toFixed(1)
+    }));
+
+    // ── Kategori naik tajam (MoM) ──
+    let biggestMoMRise = 'tidak ada kenaikan signifikan';
+    const candidates = (d.catComp || []).filter(c =>
+      c.previous > 0 && c.pct > 25 && c.current >= 100000
+    ).sort((a, b) => b.pct - a.pct);
+    if (candidates.length) {
+      const top = candidates[0];
+      biggestMoMRise = `${top.category} naik ${top.pct.toFixed(0)}% (dari ${fmtRp(top.previous)} → ${fmtRp(top.current)})`;
+    }
+
+    // ── Subscriptions total ──
+    const subs = d.subscriptions || [];
+    const subsTotalNum = subs.reduce((s, x) => s + (x.avgAmount || 0), 0);
+
+    // ── Dompet bermasalah (saldo negatif) ──
+    const wallets = d.walletBalances || {};
+    const negList = Object.entries(wallets)
+      .filter(([_, bal]) => bal < 0)
+      .map(([name, bal]) => `${name} (${fmtRp(bal)})`);
+    const negativeWallets = negList.length ? negList.join(', ') : 'tidak ada';
+
+    // ── Goals list dengan ETA monthly ──
+    const goalsList = ((state.goals || []).slice(0, 5)).map(g => {
+      const pct = g.target > 0 ? (g.saved / g.target * 100).toFixed(0) : '0';
+      const remaining = Math.max(0, g.target - g.saved);
+      const dleft = g.deadline ? daysFromToday(g.deadline) : null;
+      const monthsLeft = dleft != null ? Math.max(0, Math.round(dleft / 30)) : null;
+      const monthlyNeed = monthsLeft && monthsLeft > 0 ? remaining / monthsLeft : remaining;
+      const eta = (monthsLeft != null && monthsLeft > 0)
+        ? `, deadline ${dleft} hari (${monthsLeft} bln) — butuh ~${fmtRp(monthlyNeed)}/bulan`
+        : (g.deadline ? `, deadline ${dleft} hari` : ', tanpa deadline');
+      return `  - ${g.name} (${g.category || 'Umum'}): ${fmtRp(g.saved)} / ${fmtRp(g.target)} (${pct}%${eta})`;
+    }).join('\n');
+
+    return {
+      // Konteks waktu
+      monthName: monthNames[m - 1],
+      year: String(y),
+      nextMonthName: monthNames[nextM - 1],
+      monthsOfData: monthsOfData,
+
+      // Cashflow
+      totalInc: fmtRp(d.summary.totalInc),
+      totalExp: fmtRp(d.summary.totalExp),
+      totalSav: fmtRp(d.summary.totalSav),
+      balance: fmtRp(d.summary.balance),
+      savingsRate: (d.summary.savingsRate || 0).toFixed(1),
+
+      // Budget
+      ruleLabel: ruleLabel,
+      ruleNeeds: ruleParts.needs,
+      ruleWants: ruleParts.wants,
+      ruleInvest: ruleParts.invest,
+      pNeeds: pNeeds,
+      pWants: pWants,
+      pInvest: pInvest,
+
+      // Health
+      runwayDays: (d.burn && d.burn.runwayDays != null) ? String(d.burn.runwayDays) : 'tidak terbatas (surplus)',
+      dsr: (d.ratios.dsr || 0).toFixed(1),
+      emergencyFund: (d.ratios.emergencyFundRatio || 0).toFixed(1),
+      liquidityRatio: (d.ratios.liquidityRatio || 0).toFixed(1),
+      solvencyRatio: ((d.ratios.solvencyRatio || 0) * 100).toFixed(1),
+      investmentAssetRatio: ((d.ratios.investmentAssetRatio || 0) * 100).toFixed(1),
+      netWorth: fmtRp((d.netWorth && d.netWorth.netWorth) || 0),
+      nwTrend: nwTrend,
+
+      // Patterns & leakage
+      topExpenses: topExpenses,
+      biggestMoMRise: biggestMoMRise,
+      subsTotal: fmtRp(subsTotalNum),
+      subsCount: String(subs.length),
+      negativeWallets: negativeWallets,
+
+      // Goals
+      goalsList: goalsList || ''
+    };
+  }
+
+  /** Parse rule label "50/30/20" / "70/20/10" / "Custom" → object {needs, wants, invest}. */
+  function parseRuleLabel(label, custom) {
+    if (label === 'Custom' && custom) {
+      return { needs: String(custom.needs), wants: String(custom.wants), invest: String(custom.invest) };
+    }
+    const parts = (label || '50/30/20').split('/');
+    return { needs: parts[0] || '50', wants: parts[1] || '30', invest: parts[2] || '20' };
   }
 
 })();

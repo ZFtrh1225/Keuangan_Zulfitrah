@@ -20,25 +20,59 @@ const SHEET_NAMES = {
   GOAL: 'Goals'
 };
 
-const CATEGORY_TYPES = {
-  // ── NEEDS (50%) ──
-  'Makanan Pokok & Minuman': 'needs',
-  'Transportasi': 'needs',
-  'Rumah & Utilitas': 'needs',
-  'Kesehatan & Proteksi': 'needs',
-  'Kewajiban & Utang': 'needs',
-  'Pendidikan': 'needs',
-  'Keluarga & Tanggungan': 'needs',
-  // ── WANTS (30%) ──
-  'Makan di Luar & Jajanan': 'wants',
-  'Hiburan & Streaming': 'wants',
-  'Belanja Online & Fashion': 'wants',
-  'Hobi & Olahraga': 'wants',
-  'Traveling & Wisata': 'wants',
-  'Perawatan & Kecantikan': 'wants',
-  'Sosial, Amal & Hadiah': 'wants',
-  'Lain-lain': 'wants'
-};
+/**
+ * SINGLE SOURCE OF TRUTH untuk seluruh daftar kategori pengeluaran.
+ * Frontend memanggil getCategories() lalu render dropdown otomatis.
+ *
+ * Cara menambah kategori baru:
+ *   1. Tambah object baru di array di bawah dengan name, type, icon, subcategories.
+ *   2. type wajib salah satu: 'needs' | 'wants' | 'invest'
+ *      (invest = menabung/investasi — biasanya dicatat lewat tab Tabungan,
+ *       jarang dipakai untuk expense, tapi tersedia bila perlu).
+ *   3. Re-deploy. Selesai. Frontend & backend langsung sinkron.
+ */
+const CATEGORIES = [
+  // ── NEEDS (Kebutuhan) ──
+  { name: 'Makanan Pokok & Minuman', type: 'needs', icon: '🛒',
+    subcategories: ['Belanja Supermarket/Pasar', 'Sembako & Beras', 'Lauk Pauk/Warteg', 'Sayur & Buah', 'Air Galon & Gas LPG', 'Lainnya'] },
+  { name: 'Transportasi', type: 'needs', icon: '🚗',
+    subcategories: ['Bensin/BBM', 'Ojek/Taksi Online', 'Angkutan Umum/KRL', 'Parkir & Tol', 'Servis & Cuci Kendaraan', 'Lainnya'] },
+  { name: 'Rumah & Utilitas', type: 'needs', icon: '🏠',
+    subcategories: ['Sewa Kos/Kontrakan', 'Listrik (PLN)', 'Air (PDAM)', 'Internet/WiFi', 'Pulsa & Paket Data', 'Iuran Keamanan/Sampah', 'Keperluan Mandi/Cuci', 'Lainnya'] },
+  { name: 'Kesehatan & Proteksi', type: 'needs', icon: '🏥',
+    subcategories: ['Obat & Apotek', 'Dokter/Klinik/RS', 'Vitamin & Suplemen', 'BPJS Kesehatan', 'Asuransi (Kesehatan/Jiwa)', 'Alat Kesehatan', 'Lainnya'] },
+  { name: 'Kewajiban & Utang', type: 'needs', icon: '💳',
+    subcategories: ['Cicilan Paylater/Pinjol', 'Tagihan Kartu Kredit', 'Cicilan KPR', 'Cicilan Kendaraan', 'Pajak (PBB/STNK)', 'Biaya Admin/Bank', 'Lainnya'] },
+  { name: 'Pendidikan', type: 'needs', icon: '🎓',
+    subcategories: ['SPP/UKT/Uang Kuliah', 'Buku & Jurnal Kuliah', 'Kursus/Sertifikasi', 'Alat Tulis/Software', 'Pelatihan/Workshop', 'Lainnya'] },
+  { name: 'Keluarga & Tanggungan', type: 'needs', icon: '👨‍👩‍👧',
+    subcategories: ['Uang Orang Tua', 'Kebutuhan Adik/Anak', 'Asisten Rumah Tangga', 'Lainnya'] },
+
+  // ── WANTS (Keinginan) ──
+  { name: 'Makan di Luar & Jajanan', type: 'wants', icon: '🍔',
+    subcategories: ['Cafe & Kopi', 'Restoran/Fast Food', 'GoFood/GrabFood', 'Snack & Jajanan', 'Lainnya'] },
+  { name: 'Hiburan & Streaming', type: 'wants', icon: '🎬',
+    subcategories: ['Netflix/Disney/Prime', 'Spotify/Apple Music', 'Bioskop/Konser', 'Game Online/Top Up', 'Buku Fiksi/Komik', 'Lainnya'] },
+  { name: 'Belanja Online & Fashion', type: 'wants', icon: '🛍️',
+    subcategories: ['Pakaian & Baju', 'Sepatu & Tas', 'Aksesoris/Perhiasan', 'Elektronik & Gadget', 'Perabot & Dekorasi Kamar', 'Lainnya'] },
+  { name: 'Hobi & Olahraga', type: 'wants', icon: '🏋️',
+    subcategories: ['Gym/Sewa Lapangan', 'Peralatan Olahraga', 'Komunitas Hobi', 'Merchandise/Koleksi', 'Lainnya'] },
+  { name: 'Traveling & Wisata', type: 'wants', icon: '✈️',
+    subcategories: ['Tiket Pesawat/Kereta', 'Hotel/Penginapan', 'Tiket Wisata/Wahana', 'Oleh-oleh', 'Paspor/Visa', 'Lainnya'] },
+  { name: 'Perawatan & Kecantikan', type: 'wants', icon: '💄',
+    subcategories: ['Skincare & Bodycare', 'Makeup & Kosmetik', 'Salon & Barbershop', 'Spa & Pijat', 'Parfum', 'Lainnya'] },
+  { name: 'Sosial, Amal & Hadiah', type: 'wants', icon: '🎁',
+    subcategories: ['Sedekah/Infaq', 'Zakat', 'Hadiah/Kado Teman', 'Traktir Teman/Pacar', 'Sumbangan Pernikahan', 'Lainnya'] },
+  { name: 'Lain-lain', type: 'wants', icon: '🔖',
+    subcategories: ['Tak Terduga', 'Uang Hilang/Kecurian', 'Lainnya'] }
+];
+
+/** Lookup map kategori → tipe (needs/wants/invest). Diturunkan otomatis dari CATEGORIES. */
+const CATEGORY_TYPES = (function () {
+  const out = {};
+  CATEGORIES.forEach(c => { out[c.name] = c.type; });
+  return out;
+})();
 
 // Aset yang dianggap "likuid" untuk perhitungan dana darurat & runway
 const LIQUID_ASSET_TYPES = ['Kas/Bank/E-Wallet'];
@@ -87,6 +121,7 @@ function handleAction_(e) {
       case 'listRecentTransactions': return listRecentTransactions(data.month, data.year, data.limit);
       case 'listGoals':              return listGoals();
       case 'getSettings':            return getSettings();
+      case 'getCategories':          return getCategories();
       // ── Create ──
       case 'addIncome':              return addIncome(data);
       case 'addExpense':              return addExpense(data);
@@ -94,6 +129,7 @@ function handleAction_(e) {
       case 'addAsset':               return addAsset(data);
       case 'addDebt':                return addDebt(data);
       case 'addGoal':                return addGoal(data);
+      case 'addGoalDeposit':         return addGoalDeposit(data);
       // ── Update ──
       case 'editTransaction':        return editTransaction(data);
       case 'updateGoal':             return updateGoal(data);
@@ -316,6 +352,52 @@ function deleteGoal(rowIndex) {
   if (!sh) throw new Error('Sheet Goals tidak ditemukan');
   sh.deleteRow(parseInt(rowIndex, 10));
   return { success: true, msg: 'Tujuan dihapus 🗑️' };
+}
+
+/**
+ * Tambah setoran ke tujuan tertentu (atomic increment).
+ * Lebih aman daripada updateGoal({saved:newTotal}) karena tidak ada race read-modify-write
+ * antara dua tab/perangkat yang menyetor ke goal sama.
+ */
+function addGoalDeposit(data) {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.GOAL);
+  if (!sh) throw new Error('Sheet Goals tidak ditemukan');
+  const row = parseInt(data.rowIndex, 10);
+  if (!row || row < 2) throw new Error('Index baris tidak valid');
+  const amount = Number(data.amount) || 0;
+  if (amount <= 0) throw new Error('Nominal setoran harus lebih dari 0');
+
+  // kolom 4 = Saved
+  const cell = sh.getRange(row, 4);
+  const cur = parseFloat(cell.getValue()) || 0;
+  const newSaved = cur + amount;
+  cell.setValue(newSaved);
+
+  return {
+    success: true,
+    msg: 'Setoran ' + fmtRp_(amount) + ' tercatat 💰',
+    newSaved: newSaved
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  Categories endpoint (single source of truth)
+// ════════════════════════════════════════════════════════════════════
+
+/**
+ * Kembalikan daftar kategori lengkap untuk frontend.
+ * Frontend memanggil ini sekali saat init untuk render dropdown.
+ */
+function getCategories() {
+  return {
+    success: true,
+    categories: CATEGORIES.map(c => ({
+      name: c.name,
+      type: c.type,
+      icon: c.icon || '',
+      subcategories: c.subcategories || []
+    }))
+  };
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -942,10 +1024,10 @@ function buildInsights_(d) {
     const sr = d.savingsRate;
     if (sr < 10)
       out.push({ type: 'warning', icon: '💰', title: 'Tabungan Masih Rendah',
-        text: `Savings rate ${sr.toFixed(1)}% — di bawah target 20%. Otomasi transfer ke tabungan saat gajian (pay yourself first).` });
+        text: `Persentase menabung Anda ${sr.toFixed(1)}% — di bawah target 20%. Otomasi transfer ke tabungan saat gajian (pay yourself first).` });
     else if (sr >= 20)
       out.push({ type: 'success', icon: '🎯', title: 'Target Tabungan Tercapai!',
-        text: `Savings rate ${sr.toFixed(1)}% sudah melampaui target 20%. Diversifikasi ke reksadana/saham untuk hasil lebih optimal.` });
+        text: `Persentase menabung ${sr.toFixed(1)}% sudah melampaui target 20%. Diversifikasi ke reksadana/saham untuk hasil lebih optimal.` });
   }
 
   // 3. Top spending category
@@ -1011,10 +1093,10 @@ function buildInsights_(d) {
     const np = d.needs / d.totalInc * 100;
     if (wp > 35)
       out.push({ type: 'warning', icon: '🛍️', title: 'Gaya Hidup Berlebih',
-        text: `Wants ${wp.toFixed(1)}% (>30% target). Audit langganan & belanja online.` });
+        text: `Pengeluaran Keinginan ${wp.toFixed(1)}% (>30% target). Audit langganan & belanja online.` });
     if (np > 55)
       out.push({ type: 'warning', icon: '🏠', title: 'Biaya Hidup Tinggi',
-        text: `Needs ${np.toFixed(1)}% (>50% target). Evaluasi sewa, transport, atau belanja makanan.` });
+        text: `Pengeluaran Kebutuhan ${np.toFixed(1)}% (>50% target). Evaluasi sewa, transport, atau belanja makanan.` });
   }
 
   if (out.length === 0)
@@ -1074,11 +1156,11 @@ function generatePDFReport(month, year) {
     <h3>🩺 Rasio Kesehatan</h3>
     <table>
       <tr><th>Metrik</th><th>Nilai</th><th>Status</th></tr>
-      <tr><td>Savings Rate</td><td>${data.ratios.savingsRate.toFixed(1)}%</td><td class="${data.ratios.savingsRate>=20?'ok':'bad'}">${data.ratios.savingsRate>=20?'Sehat':'Perlu Naik'}</td></tr>
-      <tr><td>Beban Utang (DSR)</td><td>${data.ratios.dsr.toFixed(1)}%</td><td class="${data.ratios.dsr<=30?'ok':'bad'}">${data.ratios.dsr<=30?'Aman':'Bahaya'}</td></tr>
-      <tr><td>Dana Darurat</td><td>${data.ratios.emergencyFundRatio.toFixed(1)}× bln</td><td class="${data.ratios.emergencyFundRatio>=3?'ok':'bad'}">${data.ratios.emergencyFundRatio>=6?'Sangat Kuat':data.ratios.emergencyFundRatio>=3?'Cukup':'Rentan'}</td></tr>
-      <tr><td>Solvency Ratio</td><td>${(data.ratios.solvencyRatio*100).toFixed(1)}%</td><td class="${data.ratios.solvencyRatio>=0.5?'ok':'bad'}">${data.ratios.solvencyRatio>=0.5?'Sehat':'Leverage Tinggi'}</td></tr>
-      <tr><td>Investment Asset Ratio</td><td>${(data.ratios.investmentAssetRatio*100).toFixed(1)}%</td><td>—</td></tr>
+      <tr><td>Persentase Menabung <span style="color:#94a3b8">(Savings Rate)</span></td><td>${data.ratios.savingsRate.toFixed(1)}%</td><td class="${data.ratios.savingsRate>=20?'ok':'bad'}">${data.ratios.savingsRate>=20?'Sehat':'Perlu Naik'}</td></tr>
+      <tr><td>Beban Utang <span style="color:#94a3b8">(DSR)</span></td><td>${data.ratios.dsr.toFixed(1)}%</td><td class="${data.ratios.dsr<=30?'ok':'bad'}">${data.ratios.dsr<=30?'Aman':'Bahaya'}</td></tr>
+      <tr><td>Dana Darurat <span style="color:#94a3b8">(Emergency Fund)</span></td><td>${data.ratios.emergencyFundRatio.toFixed(1)}× bln</td><td class="${data.ratios.emergencyFundRatio>=3?'ok':'bad'}">${data.ratios.emergencyFundRatio>=6?'Sangat Kuat':data.ratios.emergencyFundRatio>=3?'Cukup':'Rentan'}</td></tr>
+      <tr><td>Aset Bersih dari Hutang <span style="color:#94a3b8">(Solvency)</span></td><td>${(data.ratios.solvencyRatio*100).toFixed(1)}%</td><td class="${data.ratios.solvencyRatio>=0.5?'ok':'bad'}">${data.ratios.solvencyRatio>=0.5?'Sehat':'Leverage Tinggi'}</td></tr>
+      <tr><td>Porsi Aset Berkembang <span style="color:#94a3b8">(Investment Ratio)</span></td><td>${(data.ratios.investmentAssetRatio*100).toFixed(1)}%</td><td>—</td></tr>
     </table>
 
     <h3>🤖 Rekomendasi AI</h3>
@@ -1102,7 +1184,18 @@ function generatePDFReport(month, year) {
 //  Gemini Deep Analysis
 // ════════════════════════════════════════════════════════════════════
 
-function getGeminiDeepAnalysis(dataSummary) {
+/**
+ * Analisa CFP-style dengan data konteks komprehensif.
+ * Frontend mengirim payload kaya berisi:
+ *   - Cashflow & Budget (existing)
+ *   - Health metrics + nwTrend
+ *   - Top 3 expense + biggestMoMRise
+ *   - Subscriptions total + count
+ *   - Negative wallets warning
+ *   - Goals aktif dengan ETA monthly
+ *   - monthsOfData (untuk validasi disclaimer)
+ */
+function getGeminiDeepAnalysis(d) {
   const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
   if (!apiKey) {
     return { success: false, error: 'GEMINI_API_KEY belum diset di Script Properties.' };
@@ -1110,28 +1203,87 @@ function getGeminiDeepAnalysis(dataSummary) {
 
   const apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + apiKey;
 
-  const prompt = `Bertindaklah sebagai Perencana Keuangan Tersertifikasi (CFP) senior yang sangat ahli, objektif, dan tajam. Klien Anda adalah seorang karyawan yang sedang membangun fondasi kekayaan.
+  // ── Format helpers untuk fallback ──
+  const v = (val, fallback) => (val !== undefined && val !== null && val !== '') ? val : (fallback || '—');
+  const monthsOfData = parseInt(d.monthsOfData, 10) || 1;
+  const isShortHistory = monthsOfData < 3;
 
-Profil kesehatan finansial bulan ini:
-- Arus Kas: Pemasukan ${dataSummary.totalInc}, Pengeluaran ${dataSummary.totalExp}, Ditabung/Investasi ${dataSummary.totalSav}.
-- Savings Rate: ${dataSummary.savingsRate}%
-- Alokasi Anggaran: Kebutuhan ${dataSummary.pNeeds}%, Keinginan ${dataSummary.pWants}%, Tabungan ${dataSummary.pInvest}%.
-- Metrik Lanjutan:
-  * Ketahanan Dana (Runway): ${dataSummary.runwayDays} hari
-  * Rasio Beban Utang (DSR): ${dataSummary.dsr}% (Batas bahaya > 30%)
-  * Rasio Dana Darurat: ${dataSummary.emergencyFund}x pengeluaran bulanan (Ideal 3-6x)
-  * Liquidity Ratio: ${dataSummary.liquidityRatio || 'N/A'}
-  * Solvency Ratio: ${dataSummary.solvencyRatio || 'N/A'}%
-  * Investment Asset Ratio: ${dataSummary.investmentAssetRatio || 'N/A'}%
-  * Kebocoran Terbesar: Kategori "${dataSummary.topExpense}"
+  // Format top 3 list
+  const topExpenseLines = (d.topExpenses && d.topExpenses.length)
+    ? d.topExpenses.slice(0, 3).map((t, i) => `    ${i + 1}. ${t.name} — ${t.amount} (${t.pct}% dari total pengeluaran)`).join('\n')
+    : '    (Belum ada data pengeluaran cukup)';
 
-Tugas:
-1. Audit komprehensif maksimal 3 paragraf.
-2. Cari benang merah dari data (misal: DSR tinggi + Dana Darurat rendah = risiko serius).
-3. Berikan satu rekomendasi taktis spesifik yang bisa langsung dieksekusi bulan depan.
-4. Baca makna di balik angka (apakah napas keuangan cukup, ada kebocoran halus, dll).
-5. Gaya bahasa profesional, tegas, berwibawa, namun SANGAT SEDERHANA & santai. Hindari jargon rumit. Suportif layaknya konsultan papan atas.
-6. Format: gunakan markdown bold (**kata**) untuk highlight, dan emoji secukupnya.`;
+  // Goals section
+  const goalsBlock = (d.goalsList && d.goalsList.length)
+    ? d.goalsList.split('\n').filter(x => x.trim()).join('\n')
+    : '  (Belum ada tujuan keuangan aktif)';
+
+  const disclaimer = isShortHistory
+    ? '\n\nCATATAN UNTUK ANDA: data baru tersedia ' + monthsOfData + ' bulan, jadi tutup analisis Anda dengan paragraf singkat yang mengingatkan pengguna bahwa proyeksi & rasio akan jauh lebih akurat setelah minimal 3-6 bulan pencatatan rutin.'
+    : '';
+
+  const prompt = `Bertindaklah sebagai Perencana Keuangan Tersertifikasi (CFP) senior berpengalaman 15+ tahun di Indonesia, yang biasa menangani klien menengah profesional. Anda objektif, tajam, suportif, dan jago menerjemahkan angka jadi cerita yang bermakna.
+
+Klien Anda: pekerja yang sedang membangun fondasi kekayaan dan butuh review bulanan. Anda diminta memberi audit ringkas namun tepat sasaran.
+
+═══════════ DATA KEUANGAN — ${v(d.monthName, 'Bulan ini')} ${v(d.year, '')} ═══════════
+
+ARUS KAS BULAN INI
+  • Pemasukan ............ ${v(d.totalInc)}
+  • Pengeluaran .......... ${v(d.totalExp)}
+  • Tabungan/Investasi ... ${v(d.totalSav)}
+  • Sisa Saldo ........... ${v(d.balance)}
+  • Persentase Menabung .. ${v(d.savingsRate)}% (target sehat ≥ 20%)
+
+ALOKASI ANGGARAN (aturan ${v(d.ruleLabel, '50/30/20')})
+  • Kebutuhan ${v(d.pNeeds)}% (target ${v(d.ruleNeeds, '50')}%)
+  • Keinginan ${v(d.pWants)}% (target ${v(d.ruleWants, '30')}%)
+  • Investasi ${v(d.pInvest)}% (target ${v(d.ruleInvest, '20')}%)
+
+KESEHATAN FINANSIAL
+  • Ketahanan Dana ............... ${v(d.runwayDays)} hari (ideal ≥ 90 hari / 3 bulan)
+  • Beban Utang (DSR) ............ ${v(d.dsr)}% (bahaya jika > 30%)
+  • Dana Darurat ................. ${v(d.emergencyFund)}× pengeluaran bulanan (ideal 3-6×)
+  • Cadangan Uang Cair ........... ${v(d.liquidityRatio)}× pengeluaran (ideal ≥ 3×)
+  • Aset Bersih dari Hutang ...... ${v(d.solvencyRatio)}% (sehat ≥ 50%)
+  • Porsi Aset Berkembang ........ ${v(d.investmentAssetRatio)}% (idealnya naik seiring usia)
+  • Kekayaan Bersih bulan ini .... ${v(d.netWorth)} (${v(d.nwTrend, 'tren belum tersedia')})
+
+POLA & KEBOCORAN
+  • Top 3 Kategori Pengeluaran:
+${topExpenseLines}
+  • Kategori naik tajam dari bulan lalu: ${v(d.biggestMoMRise, 'tidak ada kenaikan signifikan')}
+  • Total langganan rutin terdeteksi: ${v(d.subsTotal, 'Rp 0')}/bulan (${v(d.subsCount, '0')} langganan)
+  • Dompet bermasalah (saldo negatif): ${v(d.negativeWallets, 'tidak ada')}
+
+TUJUAN KEUANGAN AKTIF
+${goalsBlock}
+
+DURASI DATA TERCATAT: ${monthsOfData} bulan${disclaimer}
+
+═══════════ TUGAS ═══════════
+
+Berikan analisis dengan struktur PERSIS seperti ini (maksimal 350 kata total):
+
+**📊 Diagnosis Kondisi**
+2-3 kalimat. Ringkas kondisi keuangan klien dalam 1 kalimat utuh: solid, rapuh, sedang membaik, atau memburuk? Dukung dengan 1-2 angka kunci paling representatif.
+
+**🚨 Risiko Utama yang Perlu Diwaspadai**
+Pilih SATU risiko paling urgent dari data di atas. Jelaskan kenapa berbahaya dan apa konsekuensi konkretnya kalau dibiarkan 3-6 bulan ke depan. Hubungkan dengan tujuan keuangan klien jika relevan.
+
+**🎯 Aksi Konkret untuk ${v(d.nextMonthName, 'bulan depan')}**
+Berikan SATU langkah yang:
+- Spesifik (sebutkan nominal/kategori/aksi konkret, bukan saran umum)
+- Terukur (target angka yang bisa dicek bulan depan)
+- Realistis (mempertimbangkan tujuan & kondisi klien sekarang)
+
+GAYA & ATURAN:
+- Sapa langsung pakai "Anda" — bukan "klien".
+- Bahasa profesional tapi SANGAT SEDERHANA — hindari jargon. Jika perlu pakai istilah teknis, kasih definisi singkat di kurung.
+- Pakai markdown **bold** untuk angka & kata kunci penting.
+- 1-2 emoji per paragraf maksimal, jangan berlebihan.
+- Tegas & lugas — jangan bertele-tele atau menggurui.
+- Jangan menyarankan produk keuangan spesifik (reksadana XYZ, dll). Cukup kategori (reksadana pasar uang, deposito, dll).`;
 
   const payload = { contents: [{ parts: [{ text: prompt }] }] };
   const options = {

@@ -11,6 +11,7 @@
   const LS_TX_PREFIX = LS_KEY_PREFIX + 'tx_';
   const LS_GOALS = LS_KEY_PREFIX + 'goals';
   const LS_SETTINGS = LS_KEY_PREFIX + 'settings';
+  const LS_CATEGORIES = LS_KEY_PREFIX + 'categories_v1';
   const LS_ONBOARDED = LS_KEY_PREFIX + 'onboarded_v1';
 
   const today = new Date();
@@ -20,6 +21,7 @@
     dashboard: null,
     transactions: [],
     goals: [],
+    categories: [],
     settings: {
       budgetRule: '50/30/20',
       customBudget: { needs: 50, wants: 30, invest: 20 },
@@ -79,6 +81,10 @@
   function getCachedGoals() { return lsGet(LS_GOALS) || []; }
   function setCachedGoals(items) { lsSet(LS_GOALS, items || []); }
 
+  // ── Categories cache (single source of truth dari backend) ──
+  function getCachedCategories() { return lsGet(LS_CATEGORIES) || []; }
+  function setCachedCategories(list) { lsSet(LS_CATEGORIES, list || []); }
+
   // ── Settings ──
   function loadSettings() {
     const s = lsGet(LS_SETTINGS);
@@ -104,6 +110,7 @@
   }
   function setTransactions(items) { state.transactions = items || []; }
   function setGoals(items) { state.goals = items || []; setCachedGoals(items); }
+  function setCategories(list) { state.categories = list || []; setCachedCategories(list); }
   function setMonthYear(m, y) {
     state.currentMonth = m;
     state.currentYear = y;
@@ -114,9 +121,10 @@
     getCachedDashboard, setCachedDashboard, invalidateAllCache,
     getCachedTransactions, setCachedTransactions,
     getCachedGoals, setCachedGoals,
+    getCachedCategories, setCachedCategories,
     loadSettings, saveSettings,
     isOnboarded, setOnboarded,
-    setDashboard, setTransactions, setGoals, setMonthYear
+    setDashboard, setTransactions, setGoals, setCategories, setMonthYear
   };
 
   // boot: load settings
