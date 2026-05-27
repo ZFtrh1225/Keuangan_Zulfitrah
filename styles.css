@@ -628,6 +628,32 @@ section { margin-bottom: 28px; }
   grid-template-columns: 2fr 1fr;
   gap: 16px;
 }
+/* Wrapper wajib agar Chart.js (responsive + maintainAspectRatio:false)
+   tidak masuk infinite resize loop. */
+.forecast-chart-wrap {
+  position: relative;
+  width: 100%;
+  height: 280px;
+}
+.forecast-chart-wrap > canvas {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+}
+/* Sparkline kecil di kartu Kekayaan Bersih */
+.nw-spark-wrap {
+  position: relative;
+  width: 100%;
+  height: 50px;
+  margin-top: 10px;
+}
+.nw-spark-wrap > canvas {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+}
 .forecast-meta {
   display: grid; grid-template-columns: repeat(3, 1fr);
   gap: 12px;
@@ -1124,6 +1150,8 @@ select.form-input {
   .wealth-mgmt-grid > .card:last-child { grid-column: span 1; }
   .sub-radar-grid { grid-template-columns: 1fr; }
   .hide-sm { display: none; }
+  /* Forecast chart sedikit lebih ringkas di mobile */
+  .forecast-chart-wrap { height: 240px; }
 }
 
 @media (max-width: 700px) {
