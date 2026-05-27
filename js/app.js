@@ -1,6 +1,24 @@
 /**
  * app.js — Main application logic.
  * Wires DOM events, render functions, modals, FAB, onboarding, transactions edit/delete.
+ *
+ * ──────────────────────────────────────────────────────────────────
+ *  XSS AUDIT (Mei 2026)
+ * ──────────────────────────────────────────────────────────────────
+ *  Semua data user-rendered yang masuk ke innerHTML wajib lewat
+ *  escapeHtml() dari MT.fmt. Audit menemukan & memperbaiki:
+ *    1. applyTemplateToForm: `querySelector(...[data-val=" + t.source])`
+ *       — diganti dengan iteration manual untuk hindari attribute selector
+ *       injection kalau user pilih nama dompet dengan karakter aneh.
+ *    2. walletIcon(name): hanya return emoji konstanta — aman, tidak
+ *       perlu escape (input tidak direfleksikan ke output).
+ *    3. dataUrl di receiptPreview: dari canvas.toDataURL() — base64 image
+ *       bytes saja, tidak bisa berisi HTML aktif.
+ *  Patterns yang TIDAK ditemukan (artinya aman): eval(), Function(),
+ *  document.write, outerHTML dari user data, setAttribute href/src.
+ *  Catatan: emoji icons (i.icon, c.icon) tetap di-escape via escapeHtml
+ *  meskipun nilainya berasal dari konstanta backend — defense-in-depth.
+ * ──────────────────────────────────────────────────────────────────
  */
 (function () {
   'use strict';
@@ -1969,7 +1987,12 @@
     if (t.amount > 0) $('expAmount').value = Number(t.amount).toLocaleString('id-ID');
     if (t.notes) $('expNotes').value = t.notes;
     if (t.source) {
-      const pill = document.querySelector('#expSourcePills .source-pill[data-val="' + t.source.replace(/"/g, '\\"') + '"]');
+      // Cari pill yang cocok dengan data-val (filter manual — hindari
+      // CSS attribute selector injection kalau t.source punya karakter aneh
+      // seperti "]" atau backslash).
+      const pills = document.querySelectorAll('#expSourcePills .source-pill');
+      let pill = null;
+      pills.forEach(p => { if (p.dataset.val === t.source) pill = p; });
       if (pill) {
         document.querySelectorAll('#expSourcePills .active').forEach(x => x.classList.remove('active'));
         pill.classList.add('active');

@@ -52,8 +52,10 @@
     <div class="header-right">
       <select id="monthSel" aria-label="Pilih bulan"></select>
       <select id="yearSel" aria-label="Pilih tahun"></select>
+      <button class="btn btn-ghost" id="btnTheme" aria-label="Ubah tema" title="Toggle Light/Dark">☀️</button>
       <button class="btn btn-ghost" id="btnSettings" aria-label="Pengaturan" title="Pengaturan">⚙️</button>
       <button class="btn btn-ghost" id="btnPdf" title="Cetak PDF" aria-label="Cetak PDF">📄</button>
+      <button class="btn btn-ghost" id="btnTransfer" title="Transfer antar dompet" aria-label="Transfer">🔁</button>
       <button class="btn btn-secondary" id="btnWealth" title="Update Aset & Hutang">
         <span aria-hidden="true">💎</span><span class="hide-sm"> Kekayaan</span>
       </button>
@@ -403,6 +405,38 @@
       </div>
     </section>
 
+    <!-- ═══════════════ Smart Tools (AI + Calculators) ═══════════════ -->
+    <section class="fadeUp">
+      <div class="section-title">🧠 Smart Tools — AI &amp; Kalkulator</div>
+      <div class="smart-tools-grid">
+        <button class="smart-tool-card" id="btnSmartGoal" type="button">
+          <div class="smart-tool-icon">🎯</div>
+          <div class="smart-tool-name">Smart Goal AI</div>
+          <div class="smart-tool-desc">Ketik tujuan dengan bahasa natural — AI bikin target + deadline otomatis</div>
+        </button>
+        <button class="smart-tool-card" id="btnReceiptOCR" type="button">
+          <div class="smart-tool-icon">📸</div>
+          <div class="smart-tool-name">Scan Struk (OCR)</div>
+          <div class="smart-tool-desc">Foto struk, AI ekstrak merchant + total + kategori → jadi pengeluaran</div>
+        </button>
+        <button class="smart-tool-card" id="btnSpendingDNA" type="button">
+          <div class="smart-tool-icon">🧬</div>
+          <div class="smart-tool-name">Spending DNA</div>
+          <div class="smart-tool-desc">Cluster bulan dengan pola serupa — temukan profil "bulan pokok" vs "bulan indulgent"</div>
+        </button>
+        <button class="smart-tool-card" id="btnDebtPayoff" type="button">
+          <div class="smart-tool-icon">❄️</div>
+          <div class="smart-tool-name">Debt Payoff</div>
+          <div class="smart-tool-desc">Simulasi Snowball vs Avalanche — kapan bebas hutang &amp; berapa hemat bunga</div>
+        </button>
+        <button class="smart-tool-card" id="btnFire" type="button">
+          <div class="smart-tool-icon">🔥</div>
+          <div class="smart-tool-name">FIRE Projection</div>
+          <div class="smart-tool-desc">Berapa tahun lagi modal cukup untuk hidup dari passive income (4% rule)</div>
+        </button>
+      </div>
+    </section>
+
     <!-- ═══════════════ Subscriptions Radar ═══════════════ -->
     <section class="fadeUp">
       <div class="section-title">🔁 Radar Langganan & Tagihan</div>
@@ -532,6 +566,9 @@
     <button class="fab-item income" data-action="income">💵 Pemasukan</button>
     <button class="fab-item expense" data-action="expense">💸 Pengeluaran</button>
     <button class="fab-item saving" data-action="saving">💰 Tabungan</button>
+    <button class="fab-item transfer" data-action="transfer">🔁 Transfer Antar Dompet</button>
+    <button class="fab-item receipt" data-action="receipt">📸 Scan Struk (AI)</button>
+    <button class="fab-item smart-goal" data-action="smart-goal">🎯 Smart Goal AI</button>
   </div>
 
   <!-- ═══════════════ MODAL: Transaction Input ═══════════════ -->
@@ -914,6 +951,28 @@
           </div>
           <div class="muted micro-label" id="customBudgetSum">Total: 100%</div>
         </div>
+
+        <div class="settings-section-divider"></div>
+        <div class="form-label">🔐 Keamanan &amp; Akses</div>
+        <div class="settings-quick-actions">
+          <button type="button" class="btn btn-ghost settings-link" id="settingsBtnAuth">
+            <span class="settings-link-icon">🔑</span>
+            <span class="settings-link-text">
+              <b>Token Akses</b>
+              <span class="muted">Set/rotate APP_SECRET untuk amankan endpoint backend</span>
+            </span>
+            <span class="settings-link-arrow">›</span>
+          </button>
+          <button type="button" class="btn btn-ghost settings-link" id="settingsBtnWallets">
+            <span class="settings-link-icon">👛</span>
+            <span class="settings-link-text">
+              <b>Kelola Dompet &amp; Saldo Awal</b>
+              <span class="muted">Atur opening balance per dompet (BRI, Cash, dll)</span>
+            </span>
+            <span class="settings-link-arrow">›</span>
+          </button>
+        </div>
+
         <button class="btn-submit" id="btnSubmitSettings">Simpan Pengaturan 💾</button>
       </div>
     </div>
@@ -1004,6 +1063,330 @@
     </div>
   </div>
 
+  <!-- ═══════════════ MODAL: Transfer antar dompet ═══════════════ -->
+  <div class="modal-overlay" id="transferModalOverlay">
+    <div class="modal modal-narrow" role="dialog" aria-modal="true" aria-labelledby="transferModalTitle">
+      <div class="modal-header">
+        <div class="modal-top">
+          <div class="modal-heading" id="transferModalTitle">🔁 Transfer Antar Dompet</div>
+          <button class="modal-close" data-close="transferModalOverlay" aria-label="Tutup">×</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="muted micro-label" style="margin-bottom:14px;">
+          Pindahkan dana antar dompet. Tidak menambah/mengurangi total kekayaan — hanya merubah saldo per dompet.
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="transferDate">Tanggal *</label>
+            <input type="date" class="form-input" id="transferDate" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="transferAmount">Jumlah *</label>
+            <div class="amount-input-wrap">
+              <span class="amount-prefix">Rp</span>
+              <input type="text" inputmode="numeric" class="form-input currency-mask" id="transferAmount" placeholder="0" />
+            </div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="transferFrom">Dari Dompet *</label>
+            <select class="form-input" id="transferFrom"></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="transferTo">Ke Dompet *</label>
+            <select class="form-input" id="transferTo"></select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="transferFee">Biaya Admin (opsional)</label>
+            <div class="amount-input-wrap">
+              <span class="amount-prefix">Rp</span>
+              <input type="text" inputmode="numeric" class="form-input currency-mask" id="transferFee" placeholder="0" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="transferNotes">Catatan</label>
+            <input type="text" class="form-input" id="transferNotes" placeholder="Opsional…" />
+          </div>
+        </div>
+        <button class="btn-submit" id="btnSubmitTransfer">Transfer 🔁</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ MODAL: Wallets Management ═══════════════ -->
+  <div class="modal-overlay" id="walletsModalOverlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="walletsModalTitle">
+      <div class="modal-header">
+        <div class="modal-top">
+          <div class="modal-heading" id="walletsModalTitle">👛 Kelola Dompet &amp; Saldo Awal</div>
+          <button class="modal-close" data-close="walletsModalOverlay" aria-label="Tutup">×</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="muted micro-label" style="margin-bottom:14px;">
+          Set <b>saldo awal</b> per dompet supaya saldo terkini akurat sejak hari pertama. Saldo dompet sekarang dihitung dari opening balance + transaksi + transfer.
+        </div>
+        <div id="walletsList" class="wallets-list">
+          <div class="empty-state">Memuat dompet…</div>
+        </div>
+        <button class="btn-submit btn-success" id="btnAddWallet">+ Tambah Dompet</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ MODAL: Wallet Form (add/edit) ═══════════════ -->
+  <div class="modal-overlay" id="walletFormOverlay">
+    <div class="modal modal-narrow" role="dialog" aria-modal="true" aria-labelledby="walletFormTitle">
+      <div class="modal-header">
+        <div class="modal-top">
+          <div class="modal-heading" id="walletFormTitle">👛 Dompet Baru</div>
+          <button class="modal-close" data-close="walletFormOverlay" aria-label="Tutup">×</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="walletFormRow" />
+        <div class="form-row single mb-14">
+          <div class="form-group">
+            <label class="form-label" for="walletName">Nama Dompet *</label>
+            <input type="text" class="form-input" id="walletName" placeholder="mis. BRI, Cash, GoPay" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="walletOpening">Saldo Awal</label>
+            <div class="amount-input-wrap">
+              <span class="amount-prefix">Rp</span>
+              <input type="text" inputmode="numeric" class="form-input currency-mask" id="walletOpening" placeholder="0" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="walletOpeningDate">Tanggal Saldo Awal</label>
+            <input type="date" class="form-input" id="walletOpeningDate" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="walletType">Jenis</label>
+            <select class="form-input" id="walletType">
+              <option>Bank</option>
+              <option>Cash</option>
+              <option>E-Wallet</option>
+              <option>Investasi</option>
+              <option>Lainnya</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="walletNotes">Catatan</label>
+            <input type="text" class="form-input" id="walletNotes" placeholder="Opsional…" />
+          </div>
+        </div>
+        <button class="btn-submit" id="btnSubmitWalletForm">Simpan Dompet 👛</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ MODAL: Auth / APP_SECRET ═══════════════ -->
+  <div class="modal-overlay" id="authModalOverlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="authModalTitle">
+      <div class="modal-header">
+        <div class="modal-top">
+          <div class="modal-heading" id="authModalTitle">🔑 Token Akses (APP_SECRET)</div>
+          <button class="modal-close" data-close="authModalOverlay" aria-label="Tutup">×</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <span class="auth-status-badge off" id="authStatusBadge">🔓 Backend mode: terbuka</span>
+        <div class="muted micro-label" style="margin:14px 0;">
+          Backend Apps Script bisa dilindungi dengan shared-secret token. Setelah aktif, semua request wajib menyertakan token ini. Setting ini juga ada di <b>Script Properties → APP_SECRET</b> di Apps Script editor.
+        </div>
+
+        <div class="form-row single mb-14">
+          <div class="form-group">
+            <label class="form-label" for="authTokenInput">Token di perangkat ini</label>
+            <input type="password" class="form-input" id="authTokenInput" placeholder="Tempel token / paste secret di sini" />
+            <div class="muted micro-label">Disimpan di localStorage perangkat ini — selalu disertakan otomatis.</div>
+          </div>
+        </div>
+        <button class="btn-submit" id="btnSaveAuthToken">💾 Simpan Token Lokal</button>
+
+        <div class="settings-section-divider"></div>
+
+        <div class="form-label">🔄 Set / Rotate Secret di Backend</div>
+        <div class="muted micro-label" style="margin-bottom:10px;">
+          Hati-hati: setelah disimpan, semua perangkat lain (yang belum punya token baru) akan ditolak.
+        </div>
+        <div class="form-row single mb-14">
+          <div class="form-group">
+            <label class="form-label" for="authNewSecret">Secret Baru (min 8 karakter)</label>
+            <input type="text" class="form-input" id="authNewSecret" placeholder="mis. F1n4nce-2026!" />
+          </div>
+        </div>
+        <button class="btn btn-danger" id="btnRotateSecret" style="width:100%;">🔑 Set / Rotate Secret di Backend</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ MODAL: Smart Goal AI ═══════════════ -->
+  <div class="modal-overlay" id="smartGoalModalOverlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="smartGoalTitle">
+      <div class="modal-header">
+        <div class="modal-top">
+          <div class="modal-heading" id="smartGoalTitle">🎯 Smart Goal AI</div>
+          <button class="modal-close" data-close="smartGoalModalOverlay" aria-label="Tutup">×</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="muted micro-label" style="margin-bottom:14px;">
+          Ketik tujuan keuangan dengan bahasa natural — AI ekstrak target + deadline + kategori. Contoh: <i>"saya mau tabung 50 juta untuk DP rumah dalam 2 tahun"</i>.
+        </div>
+        <div class="form-row single mb-14">
+          <div class="form-group">
+            <label class="form-label" for="smartGoalText">Tujuan Anda *</label>
+            <textarea class="form-input" id="smartGoalText" rows="3"
+              placeholder="Contoh: 'kumpulkan 30 juta untuk umroh tahun depan'"></textarea>
+          </div>
+        </div>
+        <button class="btn-submit" id="btnSubmitSmartGoal">🧠 Analisis dengan AI</button>
+        <div id="smartGoalPreview" class="smart-goal-preview" hidden></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ MODAL: Receipt OCR ═══════════════ -->
+  <div class="modal-overlay" id="receiptModalOverlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="receiptTitle">
+      <div class="modal-header">
+        <div class="modal-top">
+          <div class="modal-heading" id="receiptTitle">📸 Scan Struk (Gemini Vision)</div>
+          <button class="modal-close" data-close="receiptModalOverlay" aria-label="Tutup">×</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="muted micro-label" style="margin-bottom:14px;">
+          Foto/upload struk → AI ekstrak merchant, total, tanggal, dan kategori. Hasil bisa langsung jadi pengeluaran.
+        </div>
+        <div class="form-row single mb-14">
+          <div class="form-group">
+            <label class="form-label" for="receiptFile">Pilih Foto Struk *</label>
+            <input type="file" class="form-input" id="receiptFile" accept="image/*" capture="environment" />
+            <div class="muted micro-label">Image akan di-resize otomatis (max 1280px) sebelum dikirim ke AI.</div>
+          </div>
+        </div>
+        <div id="receiptPreview" class="receipt-preview"></div>
+        <div id="receiptResult" class="receipt-result" hidden></div>
+        <button class="btn btn-ghost" id="btnReceiptUpload" hidden>Upload Ulang</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ MODAL: Debt Payoff Calculator ═══════════════ -->
+  <div class="modal-overlay" id="debtPayoffModalOverlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="debtPayoffTitle">
+      <div class="modal-header">
+        <div class="modal-top">
+          <div class="modal-heading" id="debtPayoffTitle">❄️ Debt Payoff Calculator</div>
+          <button class="modal-close" data-close="debtPayoffModalOverlay" aria-label="Tutup">×</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="muted micro-label" style="margin-bottom:14px;">
+          Simulasi pelunasan hutang dengan strategi <b>Snowball</b> (saldo terkecil dulu) vs <b>Avalanche</b> (bunga tertinggi dulu). Pastikan tiap hutang sudah punya minimum payment &amp; bunga (edit dari Daftar Kewajiban).
+        </div>
+        <div class="form-row single mb-14">
+          <div class="form-group">
+            <label class="form-label" for="debtPayoffExtra">Extra Payment / Bulan (opsional)</label>
+            <div class="amount-input-wrap">
+              <span class="amount-prefix">Rp</span>
+              <input type="text" inputmode="numeric" class="form-input currency-mask" id="debtPayoffExtra" placeholder="0" />
+            </div>
+            <div class="muted micro-label">Diatas minimum payment. Semakin besar, semakin cepat bebas hutang.</div>
+          </div>
+        </div>
+        <button class="btn-submit" id="btnRunDebtPayoff">🧮 Hitung Simulasi</button>
+        <div id="debtPayoffResult" class="dp-result" hidden></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ MODAL: FIRE Projection ═══════════════ -->
+  <div class="modal-overlay" id="fireModalOverlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="fireTitle">
+      <div class="modal-header">
+        <div class="modal-top">
+          <div class="modal-heading" id="fireTitle">🔥 FIRE Projection</div>
+          <button class="modal-close" data-close="fireModalOverlay" aria-label="Tutup">×</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="muted micro-label" style="margin-bottom:14px;">
+          <b>Financial Independence Retire Early</b>: berapa tahun sampai modal cukup untuk hidup dari hasil investasinya saja (rule 4% withdrawal). Default return 7%/tahun (asumsi reksadana saham IDR jangka panjang).
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="fireMonthlyExp">Pengeluaran Bulanan</label>
+            <div class="amount-input-wrap">
+              <span class="amount-prefix">Rp</span>
+              <input type="text" inputmode="numeric" class="form-input currency-mask" id="fireMonthlyExp" placeholder="0" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="fireMonthlyContrib">Kontribusi / Bulan</label>
+            <div class="amount-input-wrap">
+              <span class="amount-prefix">Rp</span>
+              <input type="text" inputmode="numeric" class="form-input currency-mask" id="fireMonthlyContrib" placeholder="0" />
+            </div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="fireCurrent">Modal Investasi Saat Ini</label>
+            <div class="amount-input-wrap">
+              <span class="amount-prefix">Rp</span>
+              <input type="text" inputmode="numeric" class="form-input currency-mask" id="fireCurrent" placeholder="0" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="fireReturn">Return / Tahun (%)</label>
+            <input type="number" class="form-input" id="fireReturn" min="0" max="50" step="0.5" value="7" />
+          </div>
+        </div>
+        <div class="form-row single mb-14">
+          <div class="form-group">
+            <label class="form-label" for="fireWithdrawal">Withdrawal Rate (%)</label>
+            <input type="number" class="form-input" id="fireWithdrawal" min="2" max="10" step="0.5" value="4" />
+            <div class="muted micro-label">Default 4% (Trinity Study). Konservatif: 3-3,5%.</div>
+          </div>
+        </div>
+        <button class="btn-submit" id="btnRunFire">🧮 Hitung FIRE</button>
+        <div id="fireResult" class="fire-result" hidden></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ MODAL: Spending DNA ═══════════════ -->
+  <div class="modal-overlay" id="dnaModalOverlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="dnaTitle">
+      <div class="modal-header">
+        <div class="modal-top">
+          <div class="modal-heading" id="dnaTitle">🧬 Spending DNA</div>
+          <button class="modal-close" data-close="dnaModalOverlay" aria-label="Tutup">×</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="muted micro-label" style="margin-bottom:14px;">
+          Cluster bulan-bulan dengan pola pengeluaran serupa (cosine similarity ≥ 85%). Bantu mengidentifikasi profil hidup &amp; bulan-bulan abnormal.
+        </div>
+        <div id="dnaResult" class="dna-result">
+          <div class="muted">Klik Smart Tools → Spending DNA dari dashboard untuk memulai.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ═══════════════ MODAL: Onboarding ═══════════════ -->
   <div class="modal-overlay" id="onboardingOverlay">
     <div class="modal modal-narrow" role="dialog" aria-modal="true" aria-labelledby="onbTitle">
@@ -1045,6 +1428,7 @@
   <script src="js/formatters.js" defer></script>
   <script src="js/state.js" defer></script>
   <script src="js/api.js" defer></script>
+  <script src="js/dialog.js" defer></script>
   <script src="js/charts.js" defer></script>
   <script src="js/app.js" defer></script>
 
