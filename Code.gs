@@ -1732,7 +1732,7 @@ function generatePDFReport(month, year) {
     </style>
     <div class="header">
       <h1>📊 Laporan Audit Keuangan</h1>
-      <p style="margin:4px 0 0; color:#64748b; font-size:12px;">Money Tracker Pro &middot; Periode: ${periodName}</p>
+      <p style="margin:4px 0 0; color:#64748b; font-size:12px;">Keuangan Zulfitrah &middot; Periode: ${periodName}</p>
     </div>
     <div class="summary-box">
       <div class="card"><h4>Pemasukan</h4><p style="color:#16a34a;">${fmtRp_(data.summary.totalInc)}</p></div>
@@ -1761,7 +1761,7 @@ function generatePDFReport(month, year) {
     <h3>🤖 Rekomendasi AI</h3>
     ${(data.insights || []).slice(0, 5).map(i => `<div class="insight"><b>${i.icon} ${i.title}</b><br>${i.text}</div>`).join('')}
 
-    <div class="footer">Dihasilkan otomatis oleh Money Tracker Pro &middot; ${new Date().toLocaleString('id-ID')}</div>
+    <div class="footer">Dihasilkan otomatis oleh Zulfitrah &middot; ${new Date().toLocaleString('id-ID')}</div>
   `;
 
   const blob = Utilities.newBlob(html, 'text/html', 'Financial_Report.html');
