@@ -41,6 +41,9 @@
     const prevValue = sel.value;
     const cats = state.categories || [];
     if (!cats.length) {
+      // Saat masih memuat (loadCategories belum balik), tampilkan placeholder.
+      // Kalau load sudah balik tapi tetap kosong, populateCategoryDropdown
+      // akan dipanggil lagi via showCategoryLoadError() dengan pesan eksplisit.
       sel.innerHTML = '<option value="">— Memuat kategori… —</option>';
       return;
     }
@@ -147,10 +150,32 @@
   /** Fetch daftar kategori dari backend & isi dropdown. */
   async function loadCategories() {
     const res = await api.getCategories();
-    if (res && res.success && Array.isArray(res.categories)) {
+    if (res && res.success && Array.isArray(res.categories) && res.categories.length) {
       store.setCategories(res.categories);
       populateCategoryDropdown();
+      return;
     }
+    // Gagal memuat — tampilkan pesan eksplisit di dropdown supaya user
+    // tahu ada masalah deployment, bukan loading abadi.
+    showCategoryLoadError(res && res.error);
+  }
+
+  /**
+   * Tampilkan pesan eksplisit di dropdown kategori kalau backend gagal
+   * mengembalikan daftar (mis. Apps Script masih versi lama yang belum
+   * mengenal action `getCategories`).
+   */
+  function showCategoryLoadError(errMsg) {
+    const sel = $('expCat');
+    if (!sel) return;
+    // Jangan timpa dropdown kalau cache lokal sudah berhasil mengisinya.
+    if ((state.categories || []).length) return;
+    sel.innerHTML =
+      '<option value="">⚠️ Gagal memuat kategori — redeploy backend</option>';
+    const detail = errMsg && /Action tidak dikenal/i.test(errMsg)
+      ? 'Backend lama: redeploy Apps Script (Manage deployments → New version).'
+      : 'Cek koneksi & deployment Apps Script.';
+    showToast('Gagal memuat kategori. ' + detail, 'error');
   }
 
   // ────────────────────────────────────────────────────────────────
@@ -1516,16 +1541,26 @@
     }
 
     // ── Top 3 expense kategori ──
+    // Filter defensif: buang item tanpa nama / nama "undefined" yang mungkin
+    // berasal dari baris lama di sheet ketika Category cell kosong.
     const totalExp = d.summary && d.summary.totalExp > 0 ? d.summary.totalExp : 1;
-    const topExpenses = ((d.top10 || []).slice(0, 3)).map(t => ({
-      name: t.name,
-      amount: fmtRp(t.amount),
-      pct: (t.amount / totalExp * 100).toFixed(1)
-    }));
+    const isValidCat = (name) => {
+      if (name == null) return false;
+      const s = String(name).trim().toLowerCase();
+      return s !== '' && s !== 'undefined' && s !== 'null';
+    };
+    const topExpenses = ((d.top10 || [])
+      .filter(t => isValidCat(t.name))
+      .slice(0, 3)).map(t => ({
+        name: t.name,
+        amount: fmtRp(t.amount),
+        pct: (t.amount / totalExp * 100).toFixed(1)
+      }));
 
     // ── Kategori naik tajam (MoM) ──
     let biggestMoMRise = 'tidak ada kenaikan signifikan';
     const candidates = (d.catComp || []).filter(c =>
+      isValidCat(c.category) &&
       c.previous > 0 && c.pct > 25 && c.current >= 100000
     ).sort((a, b) => b.pct - a.pct);
     if (candidates.length) {
