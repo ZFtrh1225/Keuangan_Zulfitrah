@@ -347,7 +347,13 @@
     showLoading(false);
     state.isLoading = false;
     if (!res.success) {
-      showToast('Gagal memuat data: ' + (res.error || 'unknown'), 'error');
+      const errMsg = res.error || 'unknown';
+      // Hint paling umum
+      let hint = '';
+      if (errMsg.includes('Action tidak') || errMsg.includes('not found')) {
+        hint = ' (Code.gs di Apps Script belum di-update — lihat README)';
+      }
+      showToast('Gagal memuat data: ' + errMsg + hint, 'error');
       return;
     }
     store.setDashboard(res);
@@ -380,6 +386,15 @@
       store.setTransactions(res.transactions || []);
       store.setCachedTransactions(state.currentMonth, state.currentYear, res.transactions || []);
       renderTransactions(res.transactions || []);
+    } else {
+      // backend belum support listRecentTransactions
+      const tb = $('txTableBody');
+      if (tb) {
+        tb.innerHTML = `<tr><td colspan="6" class="empty-cell">
+          ⚠️ Backend belum mendukung daftar transaksi.<br>
+          <small>Pastikan <b>Code.gs</b> versi baru sudah di-deploy ke Apps Script (lihat README).</small>
+        </td></tr>`;
+      }
     }
   }
 
@@ -677,12 +692,28 @@
     renderWealthList('asset', nw.assetDetails, 'assetTableList');
     renderWealthList('debt', nw.debtDetails, 'debtTableList');
 
-    // Allocation
-    const allocTotal = charts.renderAllocation('allocChart', nw.assetAllocation || []);
+    // Allocation — kalau backend tidak return assetAllocation, derive dari assetDetails
+    let allocation = nw.assetAllocation;
+    if ((!allocation || !allocation.length) && nw.assetDetails && nw.assetDetails.length) {
+      const buckets = { liquid: 0, invest: 0, fixed: 0 };
+      nw.assetDetails.forEach(a => {
+        const t = (a.type || '').toLowerCase();
+        if (t.includes('kas') || t.includes('bank') || t.includes('wallet')) buckets.liquid += a.value;
+        else if (t.includes('investasi') || t.includes('saham') || t.includes('emas') || t.includes('forex')) buckets.invest += a.value;
+        else buckets.fixed += a.value;
+      });
+      allocation = [
+        { label: 'Kas/Bank/E-Wallet', value: buckets.liquid, color: '#00e5b4' },
+        { label: 'Investasi', value: buckets.invest, color: '#818cf8' },
+        { label: 'Aset Tetap', value: buckets.fixed, color: '#f59e0b' }
+      ].filter(x => x.value > 0);
+    }
+
+    const allocTotal = charts.renderAllocation('allocChart', allocation || []);
     $('allocTotal').textContent = allocTotal != null ? fmtRpShort(allocTotal) : '—';
     const legend = $('allocLegend');
-    if (nw.assetAllocation && nw.assetAllocation.length) {
-      legend.innerHTML = nw.assetAllocation.map(a => {
+    if (allocation && allocation.length) {
+      legend.innerHTML = allocation.map(a => {
         const pct = allocTotal ? (a.value / allocTotal * 100).toFixed(1) : 0;
         return `<div class="pie-legend-item">
           <div class="pie-dot" style="background:${a.color}"></div>
@@ -745,9 +776,26 @@
 
   // ── Forecast ──
   function renderForecast(forecast, sixMonths, burn) {
-    if (!forecast || !forecast.months) return;
+    const banner = $('runwayBanner');
+    const meta = $('forecastMeta');
+    const subEl = $('runwaySub');
+    const runwayEl = $('runwayDays');
+
+    // Backend belum return forecast/burn
+    if (!forecast || !forecast.months) {
+      runwayEl.textContent = '—';
+      subEl.textContent = 'data belum tersedia';
+      banner.className = 'runway-banner warn';
+      banner.textContent = '⚠️ Update Code.gs ke versi baru untuk fitur runway & forecast.';
+      meta.innerHTML = '';
+      $('burnRate').textContent = 'Rp 0';
+      $('incomeRate').textContent = 'Rp 0';
+      charts.destroy('forecastChart');
+      return;
+    }
+
     charts.renderForecast('forecastChart', sixMonths, forecast.months);
-    $('forecastMeta').innerHTML = `
+    meta.innerHTML = `
       <div class="fc-stat">
         <div class="fc-stat-lbl">Avg Income</div>
         <div class="fc-stat-val" style="color:var(--green)">${fmtRpShort(forecast.avgIncome)}</div>
@@ -764,9 +812,6 @@
 
     // Runway
     const days = burn && burn.runwayDays != null ? burn.runwayDays : null;
-    const runwayEl = $('runwayDays');
-    const subEl = $('runwaySub');
-    const banner = $('runwayBanner');
     runwayEl.classList.remove('warn', 'danger');
     banner.className = 'runway-banner';
 
@@ -877,6 +922,10 @@
       tr.addEventListener('click', () => {
         const m = parseInt(tr.dataset.month, 10);
         const y = parseInt(tr.dataset.year, 10);
+        if (!m || !y || isNaN(m) || isNaN(y)) {
+          showToast('Backend belum mendukung navigasi ini. Pastikan Code.gs versi baru sudah di-deploy.', 'error');
+          return;
+        }
         store.setMonthYear(m, y);
         $('monthSel').value = String(m);
         $('yearSel').value = String(y);
@@ -1245,9 +1294,13 @@
       source: getActivePill('expSourcePills') || 'Cash'
     };
     if (!cat || !data.date || data.amount <= 0) return showToast('Lengkapi kategori, tanggal & jumlah!', 'error');
+    // Hard-block: saldo tidak boleh kurang
     const bal = state.wallets[data.source] || 0;
+    if (bal <= 0) {
+      return showToast(`⛔ Dompet ${data.source} kosong (${fmtRp(bal)}). Tidak bisa simpan pengeluaran.`, 'error');
+    }
     if (data.amount > bal) {
-      if (!confirm(`⚠️ Saldo ${data.source} hanya ${fmtRp(bal)} (kurang ${fmtRp(data.amount - bal)}). Tetap simpan?`)) return;
+      return showToast(`⛔ Saldo ${data.source} hanya ${fmtRp(bal)} — kurang ${fmtRp(data.amount - bal)}.`, 'error');
     }
     await submitWithGuard(async () => {
       const res = await api.addExpense(data);
@@ -1264,9 +1317,13 @@
       source: getActivePill('savSourcePills') || 'BRI'
     };
     if (!data.date || data.amount <= 0) return showToast('Lengkapi tanggal & jumlah!', 'error');
+    // Hard-block: saldo tidak boleh kurang
     const bal = state.wallets[data.source] || 0;
+    if (bal <= 0) {
+      return showToast(`⛔ Rekening ${data.source} kosong (${fmtRp(bal)}). Tidak bisa simpan tabungan.`, 'error');
+    }
     if (data.amount > bal) {
-      if (!confirm(`⚠️ Saldo ${data.source} hanya ${fmtRp(bal)}. Tetap simpan?`)) return;
+      return showToast(`⛔ Saldo ${data.source} hanya ${fmtRp(bal)} — kurang ${fmtRp(data.amount - bal)}.`, 'error');
     }
     await submitWithGuard(async () => {
       const res = await api.addSaving(data);
