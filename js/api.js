@@ -57,6 +57,7 @@
   const listRecentTransactions = (month, year, limit) => call('listRecentTransactions', { month, year, limit: limit || 100 });
   const listGoals = () => call('listGoals', {});
   const getSettings = () => call('getSettings', {});
+  const getCategories = () => call('getCategories', {});
 
   // ── Create ──
   const addIncome = (data) => call('addIncome', data);
@@ -65,6 +66,7 @@
   const addAsset = (data) => call('addAsset', data);
   const addDebt = (data) => call('addDebt', data);
   const addGoal = (data) => call('addGoal', data);
+  const addGoalDeposit = (rowIndex, amount) => call('addGoalDeposit', { rowIndex, amount });
 
   // ── Update ──
   const editTransaction = (sheet, rowIndex, fields) =>
@@ -83,8 +85,8 @@
 
   MT.api = {
     API_URL, call,
-    getDashboardData, listRecentTransactions, listGoals, getSettings,
-    addIncome, addExpense, addSaving, addAsset, addDebt, addGoal,
+    getDashboardData, listRecentTransactions, listGoals, getSettings, getCategories,
+    addIncome, addExpense, addSaving, addAsset, addDebt, addGoal, addGoalDeposit,
     editTransaction, updateGoal, saveSettings,
     deleteTransaction, deleteWealthItem, deleteGoal,
     generatePDFReport, getGeminiDeepAnalysis
