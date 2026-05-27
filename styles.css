@@ -628,6 +628,21 @@ section { margin-bottom: 28px; }
   grid-template-columns: 2fr 1fr;
   gap: 16px;
 }
+
+/* Container fixed-height untuk canvas Chart.js dengan maintainAspectRatio:false.
+   Tanpa ini canvas akan tumbuh tak terbatas → infinite reflow loop. */
+.chart-canvas-wrap {
+  position: relative;
+  height: 240px;
+  width: 100%;
+}
+.sparkline-wrap {
+  position: relative;
+  height: 44px;
+  width: 100%;
+  margin-top: 8px;
+}
+
 .forecast-meta {
   display: grid; grid-template-columns: repeat(3, 1fr);
   gap: 12px;

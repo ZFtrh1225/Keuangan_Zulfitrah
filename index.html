@@ -289,7 +289,9 @@
         <div class="summary-card income">
           <div class="sc-label">💰 Kekayaan Bersih</div>
           <div class="sc-value balance" id="nwNet">Rp 0</div>
-          <canvas id="nwSparkline" height="40" aria-label="Tren kekayaan bersih"></canvas>
+          <div class="sparkline-wrap">
+            <canvas id="nwSparkline" aria-label="Tren kekayaan bersih"></canvas>
+          </div>
         </div>
       </div>
 
@@ -361,7 +363,9 @@
       <div class="forecast-grid">
         <div class="card">
           <div class="card-title">Proyeksi 3 Bulan ke Depan</div>
-          <canvas id="forecastChart" height="160" aria-label="Proyeksi cashflow"></canvas>
+          <div class="chart-canvas-wrap">
+            <canvas id="forecastChart" aria-label="Proyeksi cashflow"></canvas>
+          </div>
           <div class="forecast-meta" id="forecastMeta"></div>
         </div>
         <div class="card runway-card">
