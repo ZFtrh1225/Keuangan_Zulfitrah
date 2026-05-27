@@ -192,9 +192,15 @@ function addIncome(data) {
 
 function addExpense(data) {
   initSheets_();
+  // Tolak pengeluaran tanpa kategori — mencegah baris "kategori kosong"
+  // yang nantinya muncul sebagai kategori 'undefined' di analisis.
+  const cat = (data.category == null ? '' : String(data.category)).trim();
+  if (!cat || cat.toLowerCase() === 'undefined' || cat.toLowerCase() === 'null') {
+    return { success: false, error: 'Kategori wajib diisi.' };
+  }
   SpreadsheetApp.getActiveSpreadsheet()
     .getSheetByName(SHEET_NAMES.EXPENSE)
-    .appendRow([data.date, data.category, data.subcategory || '', Number(data.amount), data.notes || '', data.source]);
+    .appendRow([data.date, cat, data.subcategory || '', Number(data.amount), data.notes || '', data.source]);
   invalidateCache_();
   return { success: true, msg: 'Pengeluaran berhasil dicatat! ✅' };
 }
@@ -567,10 +573,17 @@ function getDashboardData(month, year) {
   });
 
   // ── Category breakdown ──
+  // Helper: normalisasi nama kategori — kosong/'undefined'/'null' → 'Lain-lain'.
+  // Mencegah baris lama dengan Category kosong muncul sebagai 'undefined'.
+  const normCat_ = (raw) => {
+    const s = (raw == null ? '' : String(raw)).trim();
+    if (!s || s.toLowerCase() === 'undefined' || s.toLowerCase() === 'null') return 'Lain-lain';
+    return s;
+  };
   const catMap = {};
   const breakdownMap = {};
   cExp.forEach(r => {
-    const cat = r[1] || 'Lain-lain';
+    const cat = normCat_(r[1]);
     const sub = r[2] || cat;
     const amt = parseFloat(r[3]) || 0;
     const note = r[4] ? r[4].toString().trim() : '';
@@ -582,7 +595,7 @@ function getDashboardData(month, year) {
 
   const pCatMap = {};
   pExp.forEach(r => {
-    const cat = r[1] || 'Lain-lain';
+    const cat = normCat_(r[1]);
     pCatMap[cat] = (pCatMap[cat] || 0) + (parseFloat(r[3]) || 0);
   });
 
