@@ -128,7 +128,13 @@
       store.setCategories(cachedCats);
       populateCategoryDropdown();
     }
+    // Cache plafon kategori (instan render walau offline)
+    const cachedBudgets = store.getCachedCategoryBudgets();
+    if (cachedBudgets && Object.keys(cachedBudgets).length) {
+      store.setCategoryBudgets(cachedBudgets);
+    }
     loadCategories(); // refresh non-blocking
+    loadCategoryBudgets(); // refresh non-blocking
 
     if (!store.isOnboarded()) {
       openModal('onboardingOverlay');
@@ -176,6 +182,16 @@
       ? 'Backend lama: redeploy Apps Script (Manage deployments → New version).'
       : 'Cek koneksi & deployment Apps Script.';
     showToast('Gagal memuat kategori. ' + detail, 'error');
+  }
+
+  /** Fetch plafon kategori dari backend. */
+  async function loadCategoryBudgets() {
+    const res = await api.getCategoryBudgets();
+    if (res && res.success && res.budgets) {
+      store.setCategoryBudgets(res.budgets);
+      // Kalau dashboard sudah ke-render, refresh widget plafon-nya.
+      if (state.dashboard) renderCategoryBudgets(state.dashboard.catComp || []);
+    }
   }
 
   // ────────────────────────────────────────────────────────────────
@@ -281,6 +297,8 @@
     $('btnPdf').addEventListener('click', downloadPDF);
     $('btnGemini').addEventListener('click', askGemini);
     $('btnBudgetRule').addEventListener('click', openSettings);
+    const btnEditCatBudget = $('btnEditCatBudget');
+    if (btnEditCatBudget) btnEditCatBudget.addEventListener('click', openSettings);
 
     // Submit handlers
     $('btnSubmitIncome').addEventListener('click', submitIncome);
@@ -479,6 +497,7 @@
     renderTop21(d.top21);
     renderPieChart(d.top10);
     renderMoM(d.catComp);
+    renderCategoryBudgets(d.catComp || []);
     renderBudgeting(d.budgeting);
     renderNetWorth(d.netWorth, d.ratios);
     renderForecast(d.forecast, d.sixMonths, d.burn);
@@ -656,6 +675,88 @@
         </tr>
       `;
     }).join('');
+  }
+
+  // ── Category Budgets (Plafon per Kategori) ──
+  /**
+   * Render progress bar per kategori berdasarkan catComp dari dashboard.
+   * Hanya kategori yang punya plafon (budget > 0) ditampilkan. Kalau tidak ada
+   * plafon di-set sama sekali, section disembunyikan total.
+   */
+  function renderCategoryBudgets(catComp) {
+    const section = $('catBudgetSection');
+    const list = $('catBudgetProgressList');
+    if (!section || !list) return;
+    const withBudget = (catComp || []).filter(c => c.budget && c.budget > 0);
+    if (!withBudget.length) {
+      section.hidden = true;
+      return;
+    }
+    section.hidden = false;
+    // Sort: kategori paling kritis (% terbesar) di atas
+    withBudget.sort((a, b) => (b.budgetUsedPct || 0) - (a.budgetUsedPct || 0));
+    list.innerHTML = withBudget.map(c => {
+      const used = c.budgetUsedPct || 0;
+      const cls = used >= 100 ? 'danger' : used >= 70 ? 'warn' : 'safe';
+      const widthPct = Math.min(100, used);
+      const cat = (state.categories || []).find(x => x.name === c.category);
+      const icon = cat && cat.icon ? cat.icon : '🔖';
+      return `
+        <div class="cat-budget-row">
+          <div class="cat-budget-name">
+            <span class="cb-icon">${escapeHtml(icon)}</span>
+            <span>${escapeHtml(c.category)}</span>
+          </div>
+          <div class="cat-budget-bar-wrap" title="${used.toFixed(0)}% dari plafon">
+            <div class="cat-budget-bar-fill ${cls}" style="width:${widthPct}%"></div>
+          </div>
+          <div class="cat-budget-amounts">
+            <span><b>${fmtRpShort(c.current)}</b> / ${fmtRpShort(c.budget)}</span>
+            <span class="pct ${cls}">${used.toFixed(0)}%</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  /**
+   * Render input grid plafon kategori di settings modal.
+   * Untuk setiap kategori (dari state.categories) tampilkan input nominal dengan
+   * value yang diisi dari state.categoryBudgets.
+   */
+  function renderCategoryBudgetSettings() {
+    const grid = $('catBudgetSettingsGrid');
+    if (!grid) return;
+    const cats = state.categories || [];
+    const budgets = state.categoryBudgets || {};
+    if (!cats.length) {
+      grid.innerHTML = '<div class="muted">Daftar kategori belum tersedia. Coba refresh.</div>';
+      return;
+    }
+    // Group ordered: needs → wants → invest
+    const order = { needs: 0, wants: 1, invest: 2 };
+    const sorted = [...cats].sort((a, b) => (order[a.type] || 9) - (order[b.type] || 9));
+    const typeLabel = { needs: 'KEBUTUHAN', wants: 'KEINGINAN', invest: 'INVESTASI' };
+    grid.innerHTML = sorted.map(c => {
+      const v = budgets[c.name] || 0;
+      const display = v > 0 ? v.toLocaleString('id-ID') : '';
+      const tag = typeLabel[c.type] || '';
+      return `
+        <div class="cat-budget-input-row">
+          <div class="cb-input-name">
+            <span>${escapeHtml((c.icon || '') + ' ' + c.name)}</span>
+            ${tag ? `<span class="cb-type-tag ${escapeHtml(c.type)}">${escapeHtml(tag)}</span>` : ''}
+          </div>
+          <div class="amount-input-wrap">
+            <span class="amount-prefix">Rp</span>
+            <input type="text" inputmode="numeric" class="form-input currency-mask cat-budget-input"
+                   data-cat="${escapeHtml(c.name)}" value="${escapeHtml(display)}" placeholder="0 = tanpa batas" />
+          </div>
+        </div>
+      `;
+    }).join('');
+    // Apply currency masking to newly-created inputs
+    setupCurrencyMasks();
   }
 
   // ── Budgeting ──
@@ -1289,6 +1390,7 @@
     $('customInvest').value = settings.customBudget.invest;
     $('customBudgetWrap').hidden = settings.budgetRule !== 'Custom';
     updateCustomBudgetTotal();
+    renderCategoryBudgetSettings();
     openModal('settingsModalOverlay');
 
     // pull latest from server (non-blocking)
@@ -1297,6 +1399,13 @@
       Object.assign(state.settings, res.settings);
       store.saveSettings(res.settings);
     }
+    // Refresh plafon kategori dari server juga, lalu re-render input grid
+    api.getCategoryBudgets().then(r => {
+      if (r && r.success && r.budgets) {
+        store.setCategoryBudgets(r.budgets);
+        renderCategoryBudgetSettings();
+      }
+    });
   }
 
   function updateCustomBudgetTotal() {
@@ -1327,6 +1436,19 @@
     const res = await api.saveSettings(data);
     if (res.success) {
       store.saveSettings(data);
+
+      // Kumpulkan plafon kategori dari input grid
+      const budgets = {};
+      document.querySelectorAll('.cat-budget-input').forEach(inp => {
+        const cat = inp.dataset.cat;
+        const val = parseRp(inp.value);
+        if (cat && val > 0) budgets[cat] = val;
+      });
+      const budgetRes = await api.saveCategoryBudgets(budgets);
+      if (budgetRes && budgetRes.success) {
+        store.setCategoryBudgets(budgetRes.budgets || budgets);
+      }
+
       showToast(res.msg, 'success');
       closeModal('settingsModalOverlay');
       store.invalidateAllCache();
@@ -1375,6 +1497,24 @@
     const bal = state.wallets[data.source] || 0;
     if (data.amount > bal) {
       if (!confirm(`⚠️ Saldo ${data.source} hanya ${fmtRp(bal)} (kurang ${fmtRp(data.amount - bal)}). Tetap simpan?`)) return;
+    }
+    // Cek plafon kategori — kalau total bulan ini + amount baru > plafon, minta konfirmasi
+    const catLimit = (state.categoryBudgets || {})[cat] || 0;
+    if (catLimit > 0) {
+      const curUsed = ((state.dashboard && state.dashboard.catComp) || [])
+        .filter(c => c.category === cat)
+        .reduce((s, c) => s + (c.current || 0), 0);
+      const projected = curUsed + data.amount;
+      if (projected >= catLimit) {
+        const overBy = projected - catLimit;
+        const msg = curUsed >= catLimit
+          ? `⚠️ Plafon kategori "${cat}" sudah terlampaui (${fmtRp(curUsed)} dari ${fmtRp(catLimit)}). Tambah pengeluaran ini akan menambah ${fmtRp(data.amount)} lagi. Tetap simpan?`
+          : `⚠️ Pengeluaran ini akan melewati plafon "${cat}" sebesar ${fmtRp(overBy)} (jadi ${fmtRp(projected)} dari ${fmtRp(catLimit)}). Tetap simpan?`;
+        if (!confirm(msg)) return;
+      } else if (projected / catLimit >= 0.9) {
+        // Soft warning di 90% — tidak block, hanya kasih toast info
+        showToast(`ℹ️ Plafon "${cat}" tinggal ${fmtRp(catLimit - projected)}.`, 'info');
+      }
     }
     await submitWithGuard(async () => {
       const res = await api.addExpense(data);
@@ -1568,6 +1708,14 @@
       biggestMoMRise = `${top.category} naik ${top.pct.toFixed(0)}% (dari ${fmtRp(top.previous)} → ${fmtRp(top.current)})`;
     }
 
+    // ── Kategori melampaui plafon (over budget) ──
+    const overBudgetList = (d.catComp || [])
+      .filter(c => isValidCat(c.category) && c.budget && c.current > c.budget)
+      .sort((a, b) => (b.current - b.budget) - (a.current - a.budget))
+      .slice(0, 3)
+      .map(c => `${c.category} ${fmtRp(c.current)}/${fmtRp(c.budget)} (${(c.budgetUsedPct || 0).toFixed(0)}%)`);
+    const overBudgetCats = overBudgetList.length ? overBudgetList.join('; ') : 'tidak ada / plafon belum diatur';
+
     // ── Subscriptions total ──
     const subs = d.subscriptions || [];
     const subsTotalNum = subs.reduce((s, x) => s + (x.avgAmount || 0), 0);
@@ -1628,6 +1776,7 @@
       // Patterns & leakage
       topExpenses: topExpenses,
       biggestMoMRise: biggestMoMRise,
+      overBudgetCats: overBudgetCats,
       subsTotal: fmtRp(subsTotalNum),
       subsCount: String(subs.length),
       negativeWallets: negativeWallets,

@@ -58,6 +58,7 @@
   const listGoals = () => call('listGoals', {});
   const getSettings = () => call('getSettings', {});
   const getCategories = () => call('getCategories', {});
+  const getCategoryBudgets = () => call('getCategoryBudgets', {});
 
   // ── Create ──
   const addIncome = (data) => call('addIncome', data);
@@ -73,6 +74,7 @@
     call('editTransaction', { sheet, rowIndex, fields });
   const updateGoal = (data) => call('updateGoal', data);
   const saveSettings = (data) => call('saveSettings', data);
+  const saveCategoryBudgets = (budgets) => call('saveCategoryBudgets', { budgets });
 
   // ── Delete ──
   const deleteTransaction = (sheet, rowIndex) => call('deleteTransaction', { sheet, rowIndex });
@@ -86,8 +88,9 @@
   MT.api = {
     API_URL, call,
     getDashboardData, listRecentTransactions, listGoals, getSettings, getCategories,
+    getCategoryBudgets,
     addIncome, addExpense, addSaving, addAsset, addDebt, addGoal, addGoalDeposit,
-    editTransaction, updateGoal, saveSettings,
+    editTransaction, updateGoal, saveSettings, saveCategoryBudgets,
     deleteTransaction, deleteWealthItem, deleteGoal,
     generatePDFReport, getGeminiDeepAnalysis
   };

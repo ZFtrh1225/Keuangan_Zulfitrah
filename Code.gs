@@ -124,6 +124,7 @@ function handleAction_(e) {
       case 'listGoals':              return listGoals();
       case 'getSettings':            return getSettings();
       case 'getCategories':          return getCategories();
+      case 'getCategoryBudgets':     return getCategoryBudgets();
       // ── Create ──
       case 'addIncome':              return addIncome(data);
       case 'addExpense':              return addExpense(data);
@@ -136,6 +137,7 @@ function handleAction_(e) {
       case 'editTransaction':        return editTransaction(data);
       case 'updateGoal':             return updateGoal(data);
       case 'saveSettings':           return saveSettings(data);
+      case 'saveCategoryBudgets':    return saveCategoryBudgets(data);
       // ── Delete ──
       case 'deleteTransaction':      return deleteTransaction(data.sheet, data.rowIndex);
       case 'deleteWealthItem':       return deleteWealthItem(data.type, data.rowIndex);
@@ -409,6 +411,40 @@ function getCategories() {
 }
 
 // ════════════════════════════════════════════════════════════════════
+//  Category Budgets (Per-category spending limits / Envelope Budgeting)
+// ════════════════════════════════════════════════════════════════════
+
+const CAT_BUDGETS_PROP = 'categoryBudgets';
+
+/** Internal: kembalikan plain object {catName: monthlyLimit}. */
+function getCategoryBudgetsRaw_() {
+  try {
+    const raw = PropertiesService.getDocumentProperties().getProperty(CAT_BUDGETS_PROP);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+  } catch (e) { return {}; }
+}
+
+function getCategoryBudgets() {
+  return { success: true, budgets: getCategoryBudgetsRaw_() };
+}
+
+function saveCategoryBudgets(data) {
+  const incoming = (data && data.budgets) || {};
+  // Normalisasi: hanya simpan entry numeric > 0 (kosong = tidak dibatasi).
+  const clean = {};
+  Object.keys(incoming).forEach(k => {
+    const n = Number(incoming[k]);
+    if (n > 0 && isFinite(n)) clean[k] = Math.round(n);
+  });
+  PropertiesService.getDocumentProperties()
+    .setProperty(CAT_BUDGETS_PROP, JSON.stringify(clean));
+  invalidateCache_();
+  return { success: true, msg: 'Plafon kategori tersimpan 💾', budgets: clean };
+}
+
+// ════════════════════════════════════════════════════════════════════
 //  Settings (Preferensi User)
 // ════════════════════════════════════════════════════════════════════
 
@@ -612,12 +648,20 @@ function getDashboardData(month, year) {
     .map(([n, v]) => ({ name: n, amount: v }));
 
   const allCats = new Set([...Object.keys(catMap), ...Object.keys(pCatMap)]);
-  const catComp = [...allCats].map(c => ({
-    category: c,
-    current: catMap[c] || 0,
-    previous: pCatMap[c] || 0,
-    pct: pctChange_(catMap[c] || 0, pCatMap[c] || 0)
-  })).sort((a, b) => b.current - a.current);
+  const catBudgets = getCategoryBudgetsRaw_();
+  const catComp = [...allCats].map(c => {
+    const cur = catMap[c] || 0;
+    const prev = pCatMap[c] || 0;
+    const bud = catBudgets[c] || 0;
+    return {
+      category: c,
+      current: cur,
+      previous: prev,
+      pct: pctChange_(cur, prev),
+      budget: bud,
+      budgetUsedPct: bud > 0 ? (cur / bud) * 100 : null
+    };
+  }).sort((a, b) => b.current - a.current);
 
   // ── 50/30/20 (atau preset user) ──
   let needs = 0, wants = 0;
@@ -844,6 +888,7 @@ function getDashboardData(month, year) {
     walletBalances,
     upcomingBills,
     subscriptions,
+    categoryBudgets: catBudgets,
     burn: {
       dailyExpense: burnRate,
       dailyIncome: dailyIncome,
@@ -1268,6 +1313,7 @@ POLA & KEBOCORAN
   • Top 3 Kategori Pengeluaran:
 ${topExpenseLines}
   • Kategori naik tajam dari bulan lalu: ${v(d.biggestMoMRise, 'tidak ada kenaikan signifikan')}
+  • Kategori melampaui plafon bulan ini: ${v(d.overBudgetCats, 'tidak ada / plafon belum diatur')}
   • Total langganan rutin terdeteksi: ${v(d.subsTotal, 'Rp 0')}/bulan (${v(d.subsCount, '0')} langganan)
   • Dompet bermasalah (saldo negatif): ${v(d.negativeWallets, 'tidak ada')}
 

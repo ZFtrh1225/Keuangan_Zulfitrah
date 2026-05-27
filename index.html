@@ -272,6 +272,20 @@
       </div>
     </section>
 
+    <!-- ═══════════════ Category Budgets (Plafon per Kategori) ═══════════════ -->
+    <section class="fadeUp" id="catBudgetSection" hidden>
+      <div class="section-title">
+        <span>💰 Plafon per Kategori</span>
+        <button class="btn-pill" id="btnEditCatBudget">⚙️ Atur</button>
+      </div>
+      <div class="card">
+        <div class="muted micro-label" style="margin-bottom:14px;">
+          Realisasi pengeluaran bulan ini vs plafon yang Anda tetapkan. Hijau = aman, Kuning = waspada (≥70%), Merah = lewat batas.
+        </div>
+        <div id="catBudgetProgressList"></div>
+      </div>
+    </section>
+
     <!-- ═══════════════ Net Worth & Ratios ═══════════════ -->
     <section class="fadeUp">
       <div class="section-title">⚖️ Neraca Kekayaan & Rasio Kesehatan</div>
@@ -845,6 +859,16 @@
           </div>
           <div class="muted micro-label" id="customBudgetSum">Total: 100%</div>
         </div>
+
+        <div class="settings-section">
+          <div class="form-label" style="margin-bottom:6px;">💰 Plafon Bulanan per Kategori</div>
+          <div class="muted micro-label" style="margin-bottom:12px;">
+            Atur batas pengeluaran maksimum tiap kategori untuk bulan ini & seterusnya. Kosongkan untuk tidak membatasi.
+            Saat input pengeluaran, Anda akan diberi peringatan kalau melewati plafon.
+          </div>
+          <div id="catBudgetSettingsGrid"></div>
+        </div>
+
         <button class="btn-submit" id="btnSubmitSettings">Simpan Pengaturan 💾</button>
       </div>
     </div>
