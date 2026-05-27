@@ -12,6 +12,7 @@
   const LS_GOALS = LS_KEY_PREFIX + 'goals';
   const LS_SETTINGS = LS_KEY_PREFIX + 'settings';
   const LS_CATEGORIES = LS_KEY_PREFIX + 'categories_v1';
+  const LS_TEMPLATES = LS_KEY_PREFIX + 'templates_v1';
   const LS_ONBOARDED = LS_KEY_PREFIX + 'onboarded_v1';
 
   const today = new Date();
@@ -22,10 +23,13 @@
     transactions: [],
     goals: [],
     categories: [],
+    templates: [],          // user-saved templates from sheet
+    templateSuggestions: [], // auto-suggest from frequent expenses
     settings: {
       budgetRule: '50/30/20',
       customBudget: { needs: 50, wants: 30, invest: 20 },
-      monthlyEmergencyTarget: 6
+      monthlyEmergencyTarget: 6,
+      categoryBudgets: {} // { 'Hiburan & Streaming': 200000, ... }
     },
     wallets: {},
     isLoading: false
@@ -85,6 +89,10 @@
   function getCachedCategories() { return lsGet(LS_CATEGORIES) || []; }
   function setCachedCategories(list) { lsSet(LS_CATEGORIES, list || []); }
 
+  // ── Templates cache ──
+  function getCachedTemplates() { return lsGet(LS_TEMPLATES) || []; }
+  function setCachedTemplates(list) { lsSet(LS_TEMPLATES, list || []); }
+
   // ── Settings ──
   function loadSettings() {
     const s = lsGet(LS_SETTINGS);
@@ -111,6 +119,11 @@
   function setTransactions(items) { state.transactions = items || []; }
   function setGoals(items) { state.goals = items || []; setCachedGoals(items); }
   function setCategories(list) { state.categories = list || []; setCachedCategories(list); }
+  function setTemplates(list, suggestions) {
+    state.templates = list || [];
+    state.templateSuggestions = suggestions || [];
+    setCachedTemplates(list || []);
+  }
   function setMonthYear(m, y) {
     state.currentMonth = m;
     state.currentYear = y;
@@ -122,9 +135,10 @@
     getCachedTransactions, setCachedTransactions,
     getCachedGoals, setCachedGoals,
     getCachedCategories, setCachedCategories,
+    getCachedTemplates, setCachedTemplates,
     loadSettings, saveSettings,
     isOnboarded, setOnboarded,
-    setDashboard, setTransactions, setGoals, setCategories, setMonthYear
+    setDashboard, setTransactions, setGoals, setCategories, setTemplates, setMonthYear
   };
 
   // boot: load settings

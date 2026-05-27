@@ -142,9 +142,18 @@
       renderAll(cached.data);
       showLoading(false);
     }
+    // Templates dari cache lalu refresh
+    const cachedTpl = store.getCachedTemplates();
+    if (cachedTpl && cachedTpl.length) {
+      store.setTemplates(cachedTpl, []);
+      renderTemplateChips();
+    }
     await loadDashboard();
     loadGoals();
     loadTransactions();
+    loadTemplates();
+    // Ambil settings (termasuk categoryBudgets) dari server
+    refreshSettings();
   }
 
   /** Fetch daftar kategori dari backend & isi dropdown. */
@@ -295,6 +304,21 @@
     // Goals
     $('btnAddGoal').addEventListener('click', () => openGoalModal(null));
     $('btnAddGoalEmpty').addEventListener('click', () => openGoalModal(null));
+
+    // Templates
+    $('btnSaveTemplate').addEventListener('click', saveCurrentAsTemplate);
+
+    // Bill Calendar
+    $('btnAddBill').addEventListener('click', openBillModal);
+    $('btnSubmitBill').addEventListener('click', submitBill);
+    $('btnCloseCalDetail').addEventListener('click', () => { $('calendarDetail').hidden = true; });
+
+    // Envelope (Category Budgets)
+    $('btnEditCatBudgets').addEventListener('click', openCatBudgetModal);
+    $('btnSubmitCatBudgets').addEventListener('click', submitCatBudgets);
+
+    // Streak badge — klik untuk info singkat
+    $('streakBadge').addEventListener('click', showStreakInfo);
 
     // Edit transaction modal actions
     $('btnDeleteTx').addEventListener('click', confirmDeleteEditedTx);
@@ -486,6 +510,10 @@
     renderSixMonths(d.sixMonths);
     updateBudgetRuleLabels(d.budgeting);
     updateWalletPills(d.walletBalances || {});
+    // ── Fitur baru ──
+    renderStreak(d.streak || null);
+    renderCalendar(d.calendar || null);
+    renderEnvelopeBudgets(d.categoryBudgets || []);
   }
 
   // ── Summary ──
@@ -1376,6 +1404,20 @@
     if (data.amount > bal) {
       if (!confirm(`⚠️ Saldo ${data.source} hanya ${fmtRp(bal)} (kurang ${fmtRp(data.amount - bal)}). Tetap simpan?`)) return;
     }
+    // ── Envelope budget warning ──
+    // Cek apakah pengeluaran ini akan melewati plafon kategori (jika ada).
+    const envelope = (state.dashboard && state.dashboard.categoryBudgets || [])
+      .find(e => e.name === cat);
+    if (envelope && envelope.budget > 0) {
+      const newSpent = envelope.spent + data.amount;
+      const newPct = (newSpent / envelope.budget) * 100;
+      if (newPct >= 100 && envelope.pct < 100) {
+        const over = newSpent - envelope.budget;
+        if (!confirm(`🚫 Plafon "${cat}" akan terlampaui!\n\nPlafon: ${fmtRp(envelope.budget)}\nSudah dipakai: ${fmtRp(envelope.spent)}\nTransaksi ini: ${fmtRp(data.amount)}\n→ Total: ${fmtRp(newSpent)} (${newPct.toFixed(0)}%)\n\nLewat ${fmtRp(over)}. Tetap simpan?`)) return;
+      } else if (newPct >= 90 && envelope.pct < 90) {
+        showToast(`⚠️ ${cat} sudah ${newPct.toFixed(0)}% dari plafon (${fmtRp(newSpent)}/${fmtRp(envelope.budget)})`, 'info');
+      }
+    }
     await submitWithGuard(async () => {
       const res = await api.addExpense(data);
       handleSubmitResult(res);
@@ -1592,6 +1634,19 @@
       return `  - ${g.name} (${g.category || 'Umum'}): ${fmtRp(g.saved)} / ${fmtRp(g.target)} (${pct}%${eta})`;
     }).join('\n');
 
+    // ── Plafon Kategori (Envelope) untuk konteks AI ──
+    const envelopes = d.categoryBudgets || [];
+    let categoryBudgetsBlock = '';
+    if (envelopes.length) {
+      categoryBudgetsBlock = envelopes.slice(0, 8).map(e => {
+        const tag = e.status === 'over' ? '🚫 OVER' : e.status === 'danger' ? '⚠️ kritis' : e.status === 'warn' ? '⚡ waspada' : '✅ aman';
+        return `  - ${e.name}: ${fmtRp(e.spent)} / ${fmtRp(e.budget)} (${e.pct.toFixed(0)}% — ${tag})`;
+      }).join('\n');
+    }
+
+    // ── Streak ──
+    const sk = d.streak || { current: 0, longest: 0 };
+
     return {
       // Konteks waktu
       monthName: monthNames[m - 1],
@@ -1633,7 +1688,12 @@
       negativeWallets: negativeWallets,
 
       // Goals
-      goalsList: goalsList || ''
+      goalsList: goalsList || '',
+
+      // Envelope budgets & konsistensi
+      categoryBudgetsBlock: categoryBudgetsBlock || '',
+      streakCurrent: String(sk.current || 0),
+      streakLongest: String(sk.longest || 0)
     };
   }
 
@@ -1644,6 +1704,429 @@
     }
     const parts = (label || '50/30/20').split('/');
     return { needs: parts[0] || '50', wants: parts[1] || '30', invest: parts[2] || '20' };
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  STREAK — counter & badges
+  // ════════════════════════════════════════════════════════════════
+  function renderStreak(streak) {
+    const el = $('streakBadge');
+    if (!el) return;
+    if (!streak) { el.hidden = true; return; }
+    const cur = streak.current || 0;
+    const ms = streak.milestone || 0;
+    el.hidden = false;
+    el.classList.remove('zero', 'milestone');
+    if (cur === 0) {
+      el.classList.add('zero');
+      el.querySelector('.streak-emoji').textContent = '💤';
+    } else {
+      el.querySelector('.streak-emoji').textContent = ms >= 30 ? '🏆' : ms >= 7 ? '🔥' : '✨';
+      if (ms > 0) el.classList.add('milestone');
+    }
+    el.querySelector('.streak-num').textContent = String(cur);
+    // Tooltip details
+    const tip = cur === 0
+      ? 'Belum ada streak. Catat ≥1 transaksi hari ini untuk mulai 🔥'
+      : `Streak ${cur} hari berturut-turut. Terpanjang: ${streak.longest || cur} hari.${streak.nextMilestone ? ` Badge berikutnya: ${streak.nextMilestone} hari.` : ''}`;
+    el.title = tip;
+  }
+
+  function showStreakInfo() {
+    const sk = (state.dashboard && state.dashboard.streak) || null;
+    if (!sk) return;
+    const cur = sk.current || 0;
+    const longest = sk.longest || 0;
+    const ms = sk.milestone || 0;
+    let badge = ms >= 365 ? '🏆 Legend (1 tahun)'
+      : ms >= 180 ? '💎 Master (6 bulan)'
+      : ms >= 90 ? '⭐ Konsisten (3 bulan)'
+      : ms >= 30 ? '🥇 Sebulan Penuh'
+      : ms >= 14 ? '🥈 2 Minggu'
+      : ms >= 7 ? '🥉 1 Minggu'
+      : '🌱 Pemula';
+    const next = sk.nextMilestone ? `\n\nBadge berikutnya: ${sk.nextMilestone} hari (${sk.nextMilestone - cur} hari lagi).` : '\n\n🎉 Sudah capai semua milestone!';
+    showToast(`🔥 Streak ${cur} hari · Terpanjang ${longest}\nBadge saat ini: ${badge}${next}`, 'info');
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  ENVELOPE BUDGETING — render dashboard list & settings modal
+  // ════════════════════════════════════════════════════════════════
+  function renderEnvelopeBudgets(envelopes) {
+    const el = $('catBudgetList');
+    if (!el) return;
+    if (!envelopes || !envelopes.length) {
+      el.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">📦</div>
+          Belum ada plafon kategori. Klik <b>Atur Plafon</b> untuk set limit per kategori (mis. Hiburan Rp 200rb/bulan).
+        </div>
+      `;
+      return;
+    }
+    el.innerHTML = envelopes.map(e => {
+      const pct = Math.min(100, e.pct || 0);
+      const widthPct = Math.min(120, e.pct || 0); // bar bisa ≥100 utk visualkan over
+      const overTxt = e.status === 'over' ? ` · 🚫 Lewat ${fmtRp(e.spent - e.budget)}` : '';
+      return `
+        <div class="envelope-row">
+          <div class="envelope-row-head">
+            <div class="envelope-name"><span class="envelope-name-text">${escapeHtml(e.name)}</span></div>
+            <div>
+              <span class="envelope-amt">${fmtRpShort(e.spent)} / ${fmtRpShort(e.budget)}</span>
+              <span class="envelope-pct ${e.status}">${(e.pct || 0).toFixed(0)}%</span>
+            </div>
+          </div>
+          <div class="envelope-bar-wrap">
+            <div class="envelope-bar ${e.status}" style="width:${widthPct}%"></div>
+          </div>
+          <div class="envelope-meta">
+            <span>${e.status === 'over' ? '🚫 Over budget' : e.status === 'danger' ? '⚠️ Hampir habis' : e.status === 'warn' ? '⚡ Waspada' : '✅ Aman'}</span>
+            <span>Sisa: ${fmtRp(e.remaining)}${overTxt}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function openCatBudgetModal() {
+    const cats = state.categories || [];
+    const budgets = (state.settings && state.settings.categoryBudgets) || {};
+    const wrap = $('catBudgetForm');
+    if (!cats.length) {
+      wrap.innerHTML = '<div class="empty-state">Kategori belum dimuat. Coba refresh halaman.</div>';
+      openModal('catBudgetModalOverlay');
+      return;
+    }
+    // Group by type → Kebutuhan / Keinginan / Investasi
+    const groups = {
+      needs: { label: '🏠 Kebutuhan', items: [] },
+      wants: { label: '🛍️ Keinginan', items: [] },
+      invest: { label: '📈 Investasi & Tabungan', items: [] }
+    };
+    cats.forEach(c => { (groups[c.type] || groups.wants).items.push(c); });
+
+    let html = '';
+    Object.values(groups).forEach(g => {
+      if (!g.items.length) return;
+      html += `<div class="cb-section-head">${escapeHtml(g.label)}</div>`;
+      g.items.forEach(c => {
+        const cur = budgets[c.name] ? Number(budgets[c.name]).toLocaleString('id-ID') : '';
+        html += `
+          <div class="cb-row">
+            <div class="cb-row-name"><span class="icon">${escapeHtml(c.icon || '📂')}</span><span>${escapeHtml(c.name)}</span></div>
+            <div class="cb-row-input amount-input-wrap">
+              <span class="amount-prefix">Rp</span>
+              <input type="text" inputmode="numeric" class="form-input currency-mask" data-cat-budget="${escapeHtml(c.name)}" value="${cur}" placeholder="0" />
+            </div>
+          </div>
+        `;
+      });
+    });
+    wrap.innerHTML = html;
+    setupCurrencyMasks();
+    openModal('catBudgetModalOverlay');
+  }
+
+  async function submitCatBudgets() {
+    const inputs = document.querySelectorAll('[data-cat-budget]');
+    const next = {};
+    inputs.forEach(inp => {
+      const name = inp.dataset.catBudget;
+      const v = parseRp(inp.value);
+      if (v > 0) next[name] = v;
+    });
+    await submitWithGuard(async () => {
+      const res = await api.saveSettings({ categoryBudgets: next });
+      if (res.success) {
+        Object.assign(state.settings, { categoryBudgets: next });
+        store.saveSettings({ categoryBudgets: next });
+        showToast('Plafon kategori tersimpan 📦', 'success');
+        closeModal('catBudgetModalOverlay');
+        store.invalidateAllCache();
+        loadDashboard();
+      } else {
+        showToast('Gagal: ' + (res.error || 'unknown'), 'error');
+      }
+    }, 'btnSubmitCatBudgets', 'Menyimpan…');
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  QUICK TEMPLATES — chip row, save, apply, delete
+  // ════════════════════════════════════════════════════════════════
+  async function loadTemplates() {
+    const res = await api.listTemplates();
+    if (res && res.success) {
+      store.setTemplates(res.templates || [], res.suggestions || []);
+      renderTemplateChips();
+    }
+  }
+
+  function renderTemplateChips() {
+    const wrap = $('templateChips');
+    if (!wrap) return;
+    const tpls = state.templates || [];
+    const sugs = state.templateSuggestions || [];
+    if (!tpls.length && !sugs.length) {
+      wrap.innerHTML = '<div class="template-chip-empty muted">Belum ada template — isi form lalu klik <b>Simpan Template</b> untuk pakai sekali klik nanti.</div>';
+      return;
+    }
+    const renderChip = (t, isSug) => {
+      const label = (t.name || t.subcategory || 'Template');
+      const amt = t.amount > 0 ? fmtRpShort(t.amount) : '—';
+      const cls = isSug ? 'template-chip suggestion' : 'template-chip';
+      const delBtn = !isSug && t.rowIndex
+        ? `<button class="template-chip-del" data-tpl-del="${t.rowIndex}" aria-label="Hapus template" title="Hapus template">×</button>`
+        : '';
+      return `
+        <div class="${cls}" data-tpl-apply='${encodeURIComponent(JSON.stringify(t))}' title="${isSug ? 'Saran dari pola transaksi · klik untuk isi form' : 'Klik untuk isi form'}">
+          <span>${isSug ? '💡 ' : '⚡ '}${escapeHtml(label)}</span>
+          <span class="template-chip-amt">${amt}</span>
+          ${delBtn}
+        </div>
+      `;
+    };
+    wrap.innerHTML =
+      tpls.map(t => renderChip(t, false)).join('') +
+      sugs.map(t => renderChip(t, true)).join('');
+
+    wrap.querySelectorAll('[data-tpl-apply]').forEach(chip => {
+      chip.addEventListener('click', e => {
+        if (e.target.closest('[data-tpl-del]')) return; // tombol delete
+        try {
+          const t = JSON.parse(decodeURIComponent(chip.dataset.tplApply));
+          applyTemplateToForm(t);
+        } catch (err) { /* noop */ }
+      });
+    });
+    wrap.querySelectorAll('[data-tpl-del]').forEach(btn => {
+      btn.addEventListener('click', async e => {
+        e.stopPropagation();
+        if (!confirm('Hapus template ini?')) return;
+        const ri = parseInt(btn.dataset.tplDel, 10);
+        const res = await api.deleteTemplate(ri);
+        if (res.success) {
+          showToast(res.msg || 'Template dihapus', 'success');
+          loadTemplates();
+        } else {
+          showToast('Gagal: ' + (res.error || 'unknown'), 'error');
+        }
+      });
+    });
+  }
+
+  /**
+   * Isi form Catat Transaksi (tab Pengeluaran) dari template.
+   * Ini hanya isi field-field yang relevan; user masih bisa edit sebelum submit.
+   */
+  function applyTemplateToForm(t) {
+    if (!t) return;
+    // Pastikan tab pengeluaran aktif
+    switchTxTab('expense');
+    // Isi kategori & subkategori
+    if (t.category) {
+      const sel = $('expCat');
+      if (sel) {
+        sel.value = t.category;
+        loadSubcat();
+        if (t.subcategory) {
+          // delay supaya options ter-render
+          setTimeout(() => { $('expSubcat').value = t.subcategory; }, 50);
+        }
+      }
+    }
+    if (t.amount > 0) $('expAmount').value = Number(t.amount).toLocaleString('id-ID');
+    if (t.notes) $('expNotes').value = t.notes;
+    if (t.source) {
+      const pill = document.querySelector('#expSourcePills .source-pill[data-val="' + t.source.replace(/"/g, '\\"') + '"]');
+      if (pill) {
+        document.querySelectorAll('#expSourcePills .active').forEach(x => x.classList.remove('active'));
+        pill.classList.add('active');
+      }
+    }
+    showToast('Template diterapkan ⚡ — review & submit', 'info');
+  }
+
+  /** Simpan transaksi yang sedang diisi sebagai template baru. */
+  async function saveCurrentAsTemplate() {
+    const cat = $('expCat').value;
+    const sub = $('expSubcat').value;
+    const amt = parseRp($('expAmount').value);
+    const notes = $('expNotes').value.trim();
+    const src = getActivePill('expSourcePills') || 'Cash';
+    if (!cat) {
+      showToast('Pilih kategori dulu sebelum simpan template', 'error');
+      return;
+    }
+    const defaultName = (sub || cat) + (amt > 0 ? ' ' + fmtRpShort(amt) : '');
+    const name = prompt('Nama template:', defaultName);
+    if (!name || !name.trim()) return;
+    const res = await api.addTemplate({
+      name: name.trim(),
+      kind: 'expense',
+      category: cat,
+      subcategory: sub,
+      amount: amt,
+      source: src,
+      notes: notes
+    });
+    if (res.success) {
+      showToast(res.msg || 'Template tersimpan', 'success');
+      loadTemplates();
+    } else {
+      showToast('Gagal: ' + (res.error || 'unknown'), 'error');
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  BILL CALENDAR — render & manual bill CRUD
+  // ════════════════════════════════════════════════════════════════
+  function renderCalendar(cal) {
+    const grid = $('calendarGrid');
+    if (!grid) return;
+    if (!cal || !cal.days) {
+      grid.innerHTML = '<div class="empty-state">Belum ada data kalender</div>';
+      return;
+    }
+    $('calRemaining').textContent = fmtRp(cal.remainingCommitment || 0);
+    $('calRemainingCount').textContent = String(cal.remainingCount || 0) + ' tagihan';
+    $('calDaysLeft').textContent = String(cal.daysLeftInMonth || 0) + ' hari';
+
+    const today = new Date();
+    const isCurMonth = (today.getFullYear() === cal.year && (today.getMonth() + 1) === cal.month);
+    const todayDate = isCurMonth ? today.getDate() : -1;
+
+    // Hitung hari pertama (offset weekday), 0=Min..6=Sab
+    const firstWeekday = new Date(cal.year, cal.month - 1, 1).getDay();
+    let cells = '';
+    // Padding kosong di awal
+    for (let i = 0; i < firstWeekday; i++) cells += '<div class="cal-cell empty"></div>';
+    // Render setiap hari
+    cal.days.forEach(d => {
+      const hasItem = d.items && d.items.length > 0;
+      const isPast = todayDate > 0 && d.day < todayDate;
+      const isToday = d.day === todayDate;
+      const dots = (d.items || []).slice(0, 4).map(it => {
+        const cls = it.type === 'subscription' ? (it.paid ? 'subscription paid' : 'subscription') : 'manual';
+        return `<span class="cal-dot ${cls}" title="${escapeHtml(it.name)}"></span>`;
+      }).join('');
+      const moreDot = (d.items || []).length > 4 ? `<span class="cal-dot" title="+${(d.items||[]).length - 4} lagi"></span>` : '';
+      const amtTxt = d.total > 0 ? fmtRpShort(d.total) : '';
+      cells += `
+        <div class="cal-cell ${hasItem ? 'has-bill' : ''} ${isPast ? 'past' : ''} ${isToday ? 'today' : ''}" data-cal-day="${d.day}">
+          <div class="cal-day-num">${d.day}</div>
+          ${hasItem ? `<div class="cal-dots">${dots}${moreDot}</div>` : ''}
+          ${amtTxt ? `<div class="cal-cell-amt">${amtTxt}</div>` : ''}
+        </div>
+      `;
+    });
+    grid.innerHTML = cells;
+
+    grid.querySelectorAll('.cal-cell.has-bill').forEach(cell => {
+      cell.addEventListener('click', () => {
+        const day = parseInt(cell.dataset.calDay, 10);
+        showCalendarDayDetail(cal, day);
+      });
+    });
+  }
+
+  function showCalendarDayDetail(cal, day) {
+    const d = cal.days.find(x => x.day === day);
+    if (!d) return;
+    const monthNames = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+    $('calDetailDate').textContent = `${day} ${monthNames[cal.month - 1]} ${cal.year}`;
+    const wrap = $('calDetailItems');
+    if (!d.items.length) {
+      wrap.innerHTML = '<div class="empty-state">Tidak ada tagihan</div>';
+    } else {
+      wrap.innerHTML = d.items.map(it => {
+        const tag = it.type === 'subscription'
+          ? `<span class="cal-tag subscription">Langganan</span>`
+          : `<span class="cal-tag manual">Manual</span>`;
+        const paid = it.paid ? `<span class="cal-tag paid">Dibayar</span>` : '';
+        const delBtn = it.type === 'manual' && it.rowIndex
+          ? `<button class="icon-btn" data-bill-del="${it.rowIndex}" title="Hapus tagihan" aria-label="Hapus">🗑️</button>`
+          : '';
+        return `
+          <div class="cal-detail-item">
+            <div>
+              <div class="cal-detail-item-name">${tag}${paid}${escapeHtml(it.name)}</div>
+              ${it.notes ? `<div class="cal-detail-item-meta">${escapeHtml(it.notes)}</div>` : ''}
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="cal-detail-item-amt ${it.paid ? 'paid' : ''}">${fmtRp(it.amount || 0)}</span>
+              ${delBtn}
+            </div>
+          </div>
+        `;
+      }).join('');
+      wrap.querySelectorAll('[data-bill-del]').forEach(btn => {
+        btn.addEventListener('click', async e => {
+          e.stopPropagation();
+          if (!confirm('Hapus tagihan ini?')) return;
+          const ri = parseInt(btn.dataset.billDel, 10);
+          const res = await api.deleteBill(ri);
+          if (res.success) {
+            showToast(res.msg || 'Tagihan dihapus', 'success');
+            $('calendarDetail').hidden = true;
+            store.invalidateAllCache();
+            loadDashboard();
+          } else {
+            showToast('Gagal: ' + (res.error || 'unknown'), 'error');
+          }
+        });
+      });
+    }
+    $('calendarDetail').hidden = false;
+    $('calendarDetail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function openBillModal() {
+    $('billName').value = '';
+    $('billAmount').value = '';
+    $('billNotes').value = '';
+    // default tanggal = akhir bulan ini
+    const last = new Date(state.currentYear, state.currentMonth, 0);
+    const iso = last.toISOString().split('T')[0];
+    $('billDate').value = iso;
+    setupCurrencyMasks();
+    openModal('billModalOverlay');
+    setTimeout(() => $('billName').focus(), 200);
+  }
+
+  async function submitBill() {
+    const data = {
+      name: $('billName').value.trim(),
+      dueDate: $('billDate').value,
+      amount: parseRp($('billAmount').value),
+      notes: $('billNotes').value.trim()
+    };
+    if (!data.name || !data.dueDate) {
+      showToast('Lengkapi nama & tanggal jatuh tempo!', 'error');
+      return;
+    }
+    await submitWithGuard(async () => {
+      const res = await api.addBill(data);
+      if (res.success) {
+        showToast(res.msg || 'Tagihan tersimpan', 'success');
+        closeModal('billModalOverlay');
+        store.invalidateAllCache();
+        loadDashboard();
+      } else {
+        showToast('Gagal: ' + (res.error || 'unknown'), 'error');
+      }
+    }, 'btnSubmitBill', 'Menyimpan…');
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  Settings refresh — pull categoryBudgets dari server saat boot
+  // ════════════════════════════════════════════════════════════════
+  async function refreshSettings() {
+    const res = await api.getSettings();
+    if (res && res.success && res.settings) {
+      Object.assign(state.settings, res.settings);
+      store.saveSettings(res.settings);
+    }
   }
 
 })();

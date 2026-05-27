@@ -58,6 +58,8 @@
   const listGoals = () => call('listGoals', {});
   const getSettings = () => call('getSettings', {});
   const getCategories = () => call('getCategories', {});
+  const listTemplates = () => call('listTemplates', {});
+  const listBills = (month, year) => call('listBills', { month, year });
 
   // ── Create ──
   const addIncome = (data) => call('addIncome', data);
@@ -67,6 +69,8 @@
   const addDebt = (data) => call('addDebt', data);
   const addGoal = (data) => call('addGoal', data);
   const addGoalDeposit = (rowIndex, amount) => call('addGoalDeposit', { rowIndex, amount });
+  const addTemplate = (data) => call('addTemplate', data);
+  const addBill = (data) => call('addBill', data);
 
   // ── Update ──
   const editTransaction = (sheet, rowIndex, fields) =>
@@ -78,6 +82,8 @@
   const deleteTransaction = (sheet, rowIndex) => call('deleteTransaction', { sheet, rowIndex });
   const deleteWealthItem = (type, rowIndex) => call('deleteWealthItem', { type, rowIndex });
   const deleteGoal = (rowIndex) => call('deleteGoal', { rowIndex });
+  const deleteTemplate = (rowIndex) => call('deleteTemplate', { rowIndex });
+  const deleteBill = (rowIndex) => call('deleteBill', { rowIndex });
 
   // ── Special ──
   const generatePDFReport = (month, year) => call('generatePDFReport', { month, year }, { timeoutMs: 60000 });
@@ -86,9 +92,11 @@
   MT.api = {
     API_URL, call,
     getDashboardData, listRecentTransactions, listGoals, getSettings, getCategories,
+    listTemplates, listBills,
     addIncome, addExpense, addSaving, addAsset, addDebt, addGoal, addGoalDeposit,
+    addTemplate, addBill,
     editTransaction, updateGoal, saveSettings,
-    deleteTransaction, deleteWealthItem, deleteGoal,
+    deleteTransaction, deleteWealthItem, deleteGoal, deleteTemplate, deleteBill,
     generatePDFReport, getGeminiDeepAnalysis
   };
 })();

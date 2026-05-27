@@ -1245,3 +1245,395 @@ select.form-input {
   .fab { bottom: max(22px, calc(22px + env(safe-area-inset-bottom))); }
   .fab-menu { bottom: max(92px, calc(92px + env(safe-area-inset-bottom))); }
 }
+
+
+/* ════════════════════════════════════════════════════════════════
+   v2.1 — Streak Badge, Quick Templates, Bill Calendar, Envelope
+   ════════════════════════════════════════════════════════════════ */
+
+/* ──────────────── Streak Badge (header) ──────────────── */
+.streak-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: linear-gradient(135deg, rgba(245,158,11,0.18), rgba(244,63,94,0.16));
+  border: 1px solid rgba(245,158,11,0.45);
+  color: var(--amber);
+  padding: 4px 11px;
+  border-radius: 22px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .15s;
+  margin-left: 6px;
+  white-space: nowrap;
+  font-family: var(--font-body);
+}
+.streak-badge:hover {
+  filter: brightness(1.15);
+  transform: scale(1.04);
+}
+.streak-badge.zero {
+  background: var(--surface);
+  border-color: var(--border2);
+  color: var(--t4);
+}
+.streak-badge.milestone {
+  background: linear-gradient(135deg, rgba(0,229,180,0.20), rgba(34,197,94,0.18));
+  border-color: rgba(0,229,180,0.55);
+  color: var(--accent);
+  box-shadow: 0 0 12px rgba(0,229,180,0.25);
+}
+.streak-emoji { font-size: 14px; }
+.streak-num { font-family: var(--font-mono); font-size: 13px; }
+.streak-suffix { font-size: 10px; opacity: 0.75; text-transform: uppercase; letter-spacing: .05em; }
+
+/* ──────────────── Quick Templates (chips) ──────────────── */
+.template-chips-wrap {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+}
+.template-chips-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px;
+}
+.template-chips {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  max-height: 90px; overflow-y: auto;
+  padding-right: 4px;
+}
+.template-chips::-webkit-scrollbar { height: 4px; width: 4px; }
+.template-chips::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+.template-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px 6px 12px;
+  background: var(--card);
+  border: 1px solid var(--border2);
+  border-radius: 18px;
+  font-size: 12px;
+  color: var(--t1);
+  cursor: pointer;
+  transition: all .15s;
+  user-select: none;
+}
+.template-chip:hover {
+  border-color: var(--accent);
+  background: var(--adim);
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+.template-chip.suggestion {
+  border-style: dashed;
+  border-color: var(--blue);
+  color: var(--blue);
+  background: var(--bdim);
+}
+.template-chip-amt {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.85;
+}
+.template-chip-del {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--border);
+  border: none;
+  color: var(--t4);
+  font-size: 11px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0;
+  margin-left: 2px;
+  line-height: 1;
+}
+.template-chip-del:hover { background: var(--rdim); color: var(--red); }
+.template-chip-empty {
+  font-size: 12px;
+  padding: 6px 4px;
+  line-height: 1.5;
+}
+
+/* ──────────────── Bill Calendar ──────────────── */
+.calendar-card { padding: 18px 20px; }
+.calendar-summary {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+.cal-stat-lbl {
+  font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .08em;
+  color: var(--t4); margin-bottom: 4px;
+}
+.cal-stat-val {
+  font-family: var(--font-mono);
+  font-size: 18px; font-weight: 700;
+  color: var(--accent);
+}
+.cal-stat:first-child .cal-stat-val { color: var(--amber); }
+.calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.calendar-weekdays span {
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--t4);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  padding: 4px 0;
+}
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.cal-cell {
+  aspect-ratio: 1 / 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 5px;
+  display: flex; flex-direction: column;
+  position: relative;
+  transition: all .15s;
+  cursor: default;
+  font-size: 11px;
+  min-height: 44px;
+}
+.cal-cell.empty {
+  background: transparent;
+  border-color: transparent;
+}
+.cal-cell.has-bill {
+  cursor: pointer;
+  background: var(--card);
+}
+.cal-cell.has-bill:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+.cal-cell.today {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.cal-cell.past { opacity: 0.5; }
+.cal-day-num {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--t2);
+}
+.cal-cell.today .cal-day-num { color: var(--accent); }
+.cal-cell-amt {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--amber);
+  margin-top: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cal-dots {
+  display: flex; gap: 2px; flex-wrap: wrap;
+  margin-top: 2px;
+}
+.cal-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--amber);
+}
+.cal-dot.subscription { background: var(--indigo); }
+.cal-dot.subscription.paid { background: var(--green); }
+.cal-dot.manual { background: var(--amber); }
+
+.calendar-detail {
+  margin-top: 14px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-sm);
+}
+.cal-detail-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+  font-weight: 700;
+  color: var(--t1);
+  font-size: 13px;
+}
+.cal-detail-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  gap: 10px;
+}
+.cal-detail-item:last-child { border-bottom: none; }
+.cal-detail-item-name {
+  font-size: 13px;
+  color: var(--t1);
+  font-weight: 600;
+}
+.cal-detail-item-meta {
+  font-size: 11px;
+  color: var(--t4);
+}
+.cal-detail-item-amt {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--amber);
+}
+.cal-detail-item-amt.paid { color: var(--green); }
+.cal-tag {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin-right: 6px;
+}
+.cal-tag.subscription { background: var(--idim); color: var(--indigo); }
+.cal-tag.manual { background: var(--adm); color: var(--amber); }
+.cal-tag.paid { background: var(--gdim); color: var(--green); }
+
+/* ──────────────── Envelope Budget List ──────────────── */
+.envelope-row {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.envelope-row:last-child { border-bottom: none; }
+.envelope-row-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 6px;
+  gap: 10px;
+}
+.envelope-name {
+  font-size: 13px; font-weight: 600; color: var(--t1);
+  display: flex; align-items: center; gap: 6px;
+  flex: 1; min-width: 0;
+}
+.envelope-name-text {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.envelope-amt {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t2);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.envelope-pct {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  margin-left: 8px;
+}
+.envelope-bar-wrap {
+  height: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.envelope-bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width .8s cubic-bezier(.4,0,.2,1);
+}
+.envelope-bar.safe   { background: linear-gradient(90deg, var(--green), #4ade80); }
+.envelope-bar.warn   { background: linear-gradient(90deg, var(--amber), #fbbf24); }
+.envelope-bar.danger { background: linear-gradient(90deg, var(--amber), var(--red)); }
+.envelope-bar.over   { background: linear-gradient(90deg, var(--red), #fb7185); }
+
+.envelope-pct.safe   { color: var(--green); }
+.envelope-pct.warn   { color: var(--amber); }
+.envelope-pct.danger { color: var(--red); }
+.envelope-pct.over   { color: var(--red); }
+
+.envelope-meta {
+  font-size: 11px;
+  color: var(--t4);
+  margin-top: 4px;
+  display: flex; gap: 10px; flex-wrap: wrap;
+}
+
+/* ──────────────── Envelope Settings Form (modal) ──────────────── */
+.cat-budget-form {
+  max-height: 50vh;
+  overflow-y: auto;
+  padding-right: 6px;
+  margin-bottom: 14px;
+}
+.cat-budget-form::-webkit-scrollbar { width: 4px; }
+.cat-budget-form::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+.cb-row {
+  display: grid;
+  grid-template-columns: 1fr 140px;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.cb-row:last-child { border-bottom: none; }
+.cb-row-name {
+  font-size: 13px;
+  color: var(--t1);
+  display: flex; align-items: center; gap: 6px;
+}
+.cb-row-name .icon { font-size: 15px; }
+.cb-row-input { position: relative; }
+.cb-row-input .form-input {
+  padding-left: 32px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  min-height: 36px;
+}
+.cb-row-input .amount-prefix { font-size: 12px; }
+.cb-section-head {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--t3);
+  padding: 14px 0 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+.cb-section-head:first-child { padding-top: 0; }
+
+/* ──────────────── Manual bills inside calendar ──────────────── */
+.btn-pill.danger {
+  border-color: rgba(244,63,94,0.4);
+  color: var(--red);
+}
+.btn-pill.danger:hover {
+  background: var(--rdim);
+  border-color: var(--red);
+}
+
+/* Mobile tweaks for calendar */
+@media (max-width: 700px) {
+  .calendar-summary { grid-template-columns: 1fr; gap: 8px; padding: 12px; }
+  .calendar-grid { gap: 3px; }
+  .cal-cell { min-height: 38px; padding: 3px; }
+  .cal-day-num { font-size: 10px; }
+  .cal-cell-amt { font-size: 8px; }
+  .cb-row { grid-template-columns: 1fr; gap: 6px; }
+  .streak-badge { padding: 3px 8px; font-size: 11px; }
+  .streak-suffix { display: none; }
+}
