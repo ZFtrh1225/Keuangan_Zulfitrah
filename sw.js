@@ -6,7 +6,7 @@
  *  - Apps Script API (POST): network-only (data must be fresh)
  */
 
-const CACHE_NAME = 'mtpro-v2-2026-05-26';
+const CACHE_NAME = 'mtpro-v2.0.3-2026-05-27';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -25,6 +25,13 @@ self.addEventListener('install', (event) => {
       .then((cache) => cache.addAll(STATIC_ASSETS).catch(() => null))
       .then(() => self.skipWaiting())
   );
+});
+
+// Listen for messages from page (e.g. SKIP_WAITING)
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('activate', (event) => {

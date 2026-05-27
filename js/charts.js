@@ -241,7 +241,8 @@
       },
       options: {
         responsive: true,
-        maintainAspectRatio: false,
+        maintainAspectRatio: true,
+        aspectRatio: 8, // very wide thin sparkline (8:1)
         plugins: {
           legend: { display: false },
           tooltip: Object.assign({}, TOOLTIP_BASE, {
@@ -327,7 +328,8 @@
       },
       options: {
         responsive: true,
-        maintainAspectRatio: false,
+        maintainAspectRatio: true,
+        aspectRatio: 2.4, // forecast: wide chart (~2.4:1)
         plugins: {
           legend: {
             display: true, position: 'bottom',

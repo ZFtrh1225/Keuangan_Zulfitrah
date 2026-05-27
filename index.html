@@ -25,7 +25,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
 
   <!-- Styles -->
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=2025-05-27c" />
 </head>
 <body>
 
@@ -895,17 +895,36 @@
   </div>
 
   <!-- ═══════════════ Scripts (deferred, in order) ═══════════════ -->
-  <script src="js/formatters.js" defer></script>
-  <script src="js/state.js" defer></script>
-  <script src="js/api.js" defer></script>
-  <script src="js/charts.js" defer></script>
-  <script src="js/app.js" defer></script>
+  <script src="js/formatters.js?v=2025-05-27c" defer></script>
+  <script src="js/state.js?v=2025-05-27c" defer></script>
+  <script src="js/api.js?v=2025-05-27c" defer></script>
+  <script src="js/charts.js?v=2025-05-27c" defer></script>
+  <script src="js/app.js?v=2025-05-27c" defer></script>
 
-  <!-- Service Worker (PWA, fail-soft) -->
+  <!-- Service Worker (PWA, fail-soft, auto-update on new version) -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js').catch(() => {});
+        navigator.serviceWorker.register('sw.js').then(reg => {
+          // Detect new SW waiting → ask it to skip waiting & reload
+          if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+          reg.addEventListener('updatefound', () => {
+            const newWorker = reg.installing;
+            if (!newWorker) return;
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                newWorker.postMessage({ type: 'SKIP_WAITING' });
+              }
+            });
+          });
+        }).catch(() => {});
+        // Reload page when controlling SW changes (new version active)
+        let refreshed = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (refreshed) return;
+          refreshed = true;
+          window.location.reload();
+        });
       });
     }
   </script>

@@ -629,18 +629,29 @@ section { margin-bottom: 28px; }
   gap: 16px;
 }
 
-/* Container fixed-height untuk canvas Chart.js dengan maintainAspectRatio:false.
-   Tanpa ini canvas akan tumbuh tak terbatas → infinite reflow loop. */
+/* Container untuk canvas Chart.js. Canvas pakai maintainAspectRatio:true
+   dengan aspectRatio fixed, jadi canvas auto-sizing dari container width.
+   Wrapper hanya perlu position:relative + max-height safety net. */
 .chart-canvas-wrap {
   position: relative;
-  height: 240px;
   width: 100%;
+  max-height: 360px;
+  overflow: hidden;
+}
+.chart-canvas-wrap canvas {
+  max-width: 100% !important;
+  max-height: 360px !important;
 }
 .sparkline-wrap {
   position: relative;
-  height: 44px;
   width: 100%;
+  max-height: 60px;
+  overflow: hidden;
   margin-top: 8px;
+}
+.sparkline-wrap canvas {
+  max-width: 100% !important;
+  max-height: 60px !important;
 }
 
 .forecast-meta {
