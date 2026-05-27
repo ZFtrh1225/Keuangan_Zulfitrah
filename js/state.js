@@ -13,6 +13,7 @@
   const LS_SETTINGS = LS_KEY_PREFIX + 'settings';
   const LS_CATEGORIES = LS_KEY_PREFIX + 'categories_v1';
   const LS_BUDGETS = LS_KEY_PREFIX + 'cat_budgets_v1';
+  const LS_TEMPLATES = LS_KEY_PREFIX + 'templates_v1';
   const LS_ONBOARDED = LS_KEY_PREFIX + 'onboarded_v1';
 
   const today = new Date();
@@ -24,6 +25,7 @@
     goals: [],
     categories: [],
     categoryBudgets: {},
+    templates: [],
     settings: {
       budgetRule: '50/30/20',
       customBudget: { needs: 50, wants: 30, invest: 20 },
@@ -91,6 +93,10 @@
   function getCachedCategoryBudgets() { return lsGet(LS_BUDGETS) || {}; }
   function setCachedCategoryBudgets(obj) { lsSet(LS_BUDGETS, obj || {}); }
 
+  // ── Templates cache ──
+  function getCachedTemplates() { return lsGet(LS_TEMPLATES) || []; }
+  function setCachedTemplates(list) { lsSet(LS_TEMPLATES, list || []); }
+
   // ── Settings ──
   function loadSettings() {
     const s = lsGet(LS_SETTINGS);
@@ -118,6 +124,7 @@
   function setGoals(items) { state.goals = items || []; setCachedGoals(items); }
   function setCategories(list) { state.categories = list || []; setCachedCategories(list); }
   function setCategoryBudgets(obj) { state.categoryBudgets = obj || {}; setCachedCategoryBudgets(obj); }
+  function setTemplates(list) { state.templates = list || []; setCachedTemplates(list); }
   function setMonthYear(m, y) {
     state.currentMonth = m;
     state.currentYear = y;
@@ -130,9 +137,10 @@
     getCachedGoals, setCachedGoals,
     getCachedCategories, setCachedCategories,
     getCachedCategoryBudgets, setCachedCategoryBudgets,
+    getCachedTemplates, setCachedTemplates,
     loadSettings, saveSettings,
     isOnboarded, setOnboarded,
-    setDashboard, setTransactions, setGoals, setCategories, setCategoryBudgets, setMonthYear
+    setDashboard, setTransactions, setGoals, setCategories, setCategoryBudgets, setTemplates, setMonthYear
   };
 
   // boot: load settings

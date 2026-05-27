@@ -1355,3 +1355,141 @@ select.form-input {
     gap: 4px;
   }
 }
+
+
+
+/* ──────────────── Quick Templates (Chips di Modal Catat Transaksi) ──────────────── */
+.tpl-chip-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 2px 12px;
+  margin-bottom: 14px;
+  scrollbar-width: thin;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  border-bottom: 1px dashed var(--border);
+}
+.tpl-chip-row::-webkit-scrollbar { height: 4px; }
+.tpl-chip-row::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+.tpl-chip {
+  flex-shrink: 0;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 14px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--t1);
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  transition: all .15s;
+  scroll-snap-align: start;
+  text-align: left;
+  max-width: 220px;
+  min-width: 130px;
+}
+.tpl-chip:hover {
+  border-color: var(--accent);
+  background: var(--card);
+  transform: translateY(-1px);
+}
+.tpl-chip:active { transform: translateY(0); }
+.tpl-chip .tpl-chip-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--t1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.tpl-chip .tpl-chip-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--t3);
+  font-weight: 500;
+}
+.tpl-mgmt-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px dashed var(--border2);
+  border-radius: 14px;
+  padding: 8px 10px;
+  font-size: 11px;
+  color: var(--t3);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: stretch;
+}
+.tpl-mgmt-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.tpl-save-row {
+  margin-top: 12px;
+  padding: 10px 0 0;
+  border-top: 1px dashed var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tpl-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--t2);
+  cursor: pointer;
+  user-select: none;
+}
+.tpl-checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.form-input-sm { padding: 8px 10px; font-size: 12px; }
+
+/* Template Management list */
+.tpl-mgmt-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.tpl-mgmt-row:last-child { border-bottom: none; }
+.tpl-mgmt-info {
+  flex: 1;
+  min-width: 0;
+}
+.tpl-mgmt-name {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--t1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tpl-mgmt-meta {
+  font-size: 11px;
+  color: var(--t3);
+  margin-top: 2px;
+}
+.tpl-mgmt-kind-badge {
+  display: inline-block;
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  margin-right: 6px;
+}
+.tpl-mgmt-kind-badge.income  { background: var(--gdim); color: #22c55e; }
+.tpl-mgmt-kind-badge.expense { background: var(--rdim); color: #f43f5e; }
+.tpl-mgmt-kind-badge.saving  { background: rgba(129,140,248,0.15); color: var(--indigo); }

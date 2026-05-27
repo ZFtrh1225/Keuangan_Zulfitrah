@@ -507,6 +507,7 @@
       <div class="modal-body">
         <!-- Income tab -->
         <div class="tab-content active" id="tab-income" role="tabpanel">
+          <div class="tpl-chip-row" id="tplChipsIncome" data-kind="income" hidden></div>
           <div class="form-group mb-14">
             <div class="form-label">Jenis Pemasukan</div>
             <div class="type-pills" id="incomePills">
@@ -549,10 +550,18 @@
             </div>
           </div>
           <button class="btn-submit" id="btnSubmitIncome">Simpan Pemasukan 💵</button>
+          <div class="tpl-save-row">
+            <label class="tpl-checkbox-label">
+              <input type="checkbox" id="incomeSaveTpl" />
+              <span>💾 Simpan sebagai template cepat</span>
+            </label>
+            <input type="text" class="form-input form-input-sm" id="incomeTplName" placeholder="Nama mis: Gaji Bulanan" hidden />
+          </div>
         </div>
 
         <!-- Expense tab -->
         <div class="tab-content" id="tab-expense" role="tabpanel">
+          <div class="tpl-chip-row" id="tplChipsExpense" data-kind="expense" hidden></div>
           <div class="form-row">
             <div class="form-group">
               <label class="form-label" for="expCat">Kategori *</label>
@@ -598,10 +607,18 @@
             </div>
           </div>
           <button class="btn-submit" id="btnSubmitExpense">Simpan Pengeluaran 💸</button>
+          <div class="tpl-save-row">
+            <label class="tpl-checkbox-label">
+              <input type="checkbox" id="expenseSaveTpl" />
+              <span>💾 Simpan sebagai template cepat</span>
+            </label>
+            <input type="text" class="form-input form-input-sm" id="expenseTplName" placeholder="Nama mis: Bensin Pertamax" hidden />
+          </div>
         </div>
 
         <!-- Saving tab -->
         <div class="tab-content" id="tab-saving" role="tabpanel">
+          <div class="tpl-chip-row" id="tplChipsSaving" data-kind="saving" hidden></div>
           <div class="form-group mb-14">
             <div class="form-label">Jenis Tabungan *</div>
             <div class="type-pills" id="savingPills">
@@ -642,6 +659,13 @@
             </div>
           </div>
           <button class="btn-submit" id="btnSubmitSaving">Simpan Tabungan 💰</button>
+          <div class="tpl-save-row">
+            <label class="tpl-checkbox-label">
+              <input type="checkbox" id="savingSaveTpl" />
+              <span>💾 Simpan sebagai template cepat</span>
+            </label>
+            <input type="text" class="form-input form-input-sm" id="savingTplName" placeholder="Nama mis: Tabungan Rutin BRI" hidden />
+          </div>
         </div>
       </div>
     </div>
@@ -890,6 +914,27 @@
         <div class="modal-actions">
           <button class="btn btn-danger" id="btnDeleteTx">🗑️ Hapus</button>
           <button class="btn-submit" id="btnSaveEditTx">💾 Simpan</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ MODAL: Template Management ═══════════════ -->
+  <div class="modal-overlay" id="tplMgmtModalOverlay">
+    <div class="modal modal-narrow" role="dialog" aria-modal="true" aria-labelledby="tplMgmtTitle">
+      <div class="modal-header">
+        <div class="modal-top">
+          <div class="modal-heading" id="tplMgmtTitle">⚡ Kelola Template Cepat</div>
+          <button class="modal-close" data-close="tplMgmtModalOverlay" aria-label="Tutup">×</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="muted micro-label" style="margin-bottom:14px;">
+          Template cepat memungkinkan Anda mencatat transaksi rutin (kos, bensin, gaji, dll) hanya dengan 2 klik.
+          Tap chip di tab Catat Transaksi untuk auto-fill form, atau hapus template yang tidak terpakai dari sini.
+        </div>
+        <div id="tplMgmtList">
+          <div class="empty-state">Belum ada template tersimpan</div>
         </div>
       </div>
     </div>

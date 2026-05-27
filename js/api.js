@@ -59,6 +59,7 @@
   const getSettings = () => call('getSettings', {});
   const getCategories = () => call('getCategories', {});
   const getCategoryBudgets = () => call('getCategoryBudgets', {});
+  const listTemplates = () => call('listTemplates', {});
 
   // ── Create ──
   const addIncome = (data) => call('addIncome', data);
@@ -68,6 +69,7 @@
   const addDebt = (data) => call('addDebt', data);
   const addGoal = (data) => call('addGoal', data);
   const addGoalDeposit = (rowIndex, amount) => call('addGoalDeposit', { rowIndex, amount });
+  const addTemplate = (data) => call('addTemplate', data);
 
   // ── Update ──
   const editTransaction = (sheet, rowIndex, fields) =>
@@ -80,6 +82,7 @@
   const deleteTransaction = (sheet, rowIndex) => call('deleteTransaction', { sheet, rowIndex });
   const deleteWealthItem = (type, rowIndex) => call('deleteWealthItem', { type, rowIndex });
   const deleteGoal = (rowIndex) => call('deleteGoal', { rowIndex });
+  const deleteTemplate = (rowIndex) => call('deleteTemplate', { rowIndex });
 
   // ── Special ──
   const generatePDFReport = (month, year) => call('generatePDFReport', { month, year }, { timeoutMs: 60000 });
@@ -89,9 +92,12 @@
     API_URL, call,
     getDashboardData, listRecentTransactions, listGoals, getSettings, getCategories,
     getCategoryBudgets,
+    listTemplates,
     addIncome, addExpense, addSaving, addAsset, addDebt, addGoal, addGoalDeposit,
+    addTemplate,
     editTransaction, updateGoal, saveSettings, saveCategoryBudgets,
     deleteTransaction, deleteWealthItem, deleteGoal,
+    deleteTemplate,
     generatePDFReport, getGeminiDeepAnalysis
   };
 })();

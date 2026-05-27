@@ -135,6 +135,13 @@
     }
     loadCategories(); // refresh non-blocking
     loadCategoryBudgets(); // refresh non-blocking
+    // Cache templates → render chip dulu, lalu refresh dari server
+    const cachedTpls = store.getCachedTemplates();
+    if (cachedTpls && cachedTpls.length) {
+      store.setTemplates(cachedTpls);
+      renderQuickTemplateChips();
+    }
+    loadTemplates(); // refresh non-blocking
 
     if (!store.isOnboarded()) {
       openModal('onboardingOverlay');
@@ -191,6 +198,15 @@
       store.setCategoryBudgets(res.budgets);
       // Kalau dashboard sudah ke-render, refresh widget plafon-nya.
       if (state.dashboard) renderCategoryBudgets(state.dashboard.catComp || []);
+    }
+  }
+
+  /** Fetch template cepat dari backend & re-render chip rows. */
+  async function loadTemplates() {
+    const res = await api.listTemplates();
+    if (res && res.success && Array.isArray(res.templates)) {
+      store.setTemplates(res.templates);
+      renderQuickTemplateChips();
     }
   }
 
@@ -288,6 +304,19 @@
         t.classList.remove('open');
         return;
       }
+
+      // Quick template: apply
+      const applyBtn = t.closest && t.closest('[data-tpl-apply]');
+      if (applyBtn) {
+        applyTemplate(parseInt(applyBtn.dataset.tplApply, 10));
+        return;
+      }
+      // Quick template: open management modal
+      const mgmtBtn = t.closest && t.closest('[data-tpl-mgmt-open]');
+      if (mgmtBtn) {
+        openTemplateMgmtModal();
+        return;
+      }
     });
 
     // Header buttons
@@ -320,6 +349,15 @@
 
     // Subcategory loader
     $('expCat').addEventListener('change', loadSubcat);
+
+    // Save-as-template: toggle name input visibility
+    ['income', 'expense', 'saving'].forEach(kind => {
+      const cb = $(kind + 'SaveTpl');
+      const inp = $(kind + 'TplName');
+      if (cb && inp) {
+        cb.addEventListener('change', () => { inp.hidden = !cb.checked; if (cb.checked) inp.focus(); });
+      }
+    });
 
     // Custom budget total live calc
     ['customNeeds', 'customWants', 'customInvest'].forEach(id => {
@@ -757,6 +795,185 @@
     }).join('');
     // Apply currency masking to newly-created inputs
     setupCurrencyMasks();
+  }
+
+  // ────────────────────────────────────────────────────────────────
+  //  QUICK TEMPLATES (chip cepat di modal Catat Transaksi)
+  // ────────────────────────────────────────────────────────────────
+
+  /** Render chip row di setiap tab transaksi sesuai kind-nya. */
+  function renderQuickTemplateChips() {
+    const tpls = state.templates || [];
+    ['income', 'expense', 'saving'].forEach(kind => {
+      const row = document.getElementById('tplChips' + kind.charAt(0).toUpperCase() + kind.slice(1));
+      if (!row) return;
+      const filtered = tpls.filter(t => t.kind === kind);
+      if (!filtered.length) {
+        // Tetap tampilkan tombol Kelola supaya user tahu ada fitur ini
+        row.innerHTML =
+          `<button class="tpl-mgmt-btn" data-tpl-mgmt-open="1" title="Kelola template">+ Buat template cepat</button>`;
+        row.hidden = false;
+        return;
+      }
+      const chips = filtered.map(t => {
+        const meta = fmtRpShort(t.amount || 0);
+        const label = (t.kind === 'expense' ? (t.subcategory || t.category) : t.type) || t.name;
+        return `
+          <button class="tpl-chip" data-tpl-apply="${t.rowIndex}" title="${escapeHtml(t.name)}">
+            <span class="tpl-chip-name">⚡ ${escapeHtml(t.name)}</span>
+            <span class="tpl-chip-meta">${escapeHtml(label || '—')} · ${escapeHtml(meta)}</span>
+          </button>
+        `;
+      }).join('');
+      row.innerHTML = chips +
+        `<button class="tpl-mgmt-btn" data-tpl-mgmt-open="1" title="Kelola template">⚙️</button>`;
+      row.hidden = false;
+    });
+  }
+
+  /**
+   * Apply template ke form di tab yang sesuai.
+   * Kalau kind tidak match dengan tab aktif, switch tab dulu.
+   */
+  function applyTemplate(rowIndex) {
+    const tpl = (state.templates || []).find(t => t.rowIndex === rowIndex);
+    if (!tpl) return;
+
+    // Pastikan tab kind yang benar aktif
+    switchTxTab(tpl.kind);
+
+    const today = new Date().toISOString().split('T')[0];
+    const fmtAmt = (tpl.amount || 0).toLocaleString('id-ID');
+
+    if (tpl.kind === 'income') {
+      $('incomeDate').value = today;
+      $('incomeAmount').value = fmtAmt;
+      $('incomeNotes').value = tpl.notes || '';
+      activatePillByValue('incomePills', tpl.type);
+      activatePillByValue('incomeSourcePills', tpl.source);
+    } else if (tpl.kind === 'expense') {
+      $('expDate').value = today;
+      $('expAmount').value = fmtAmt;
+      $('expNotes').value = tpl.notes || '';
+      // Set kategori → kalau ada, populate subkategori dulu, lalu set sub
+      if (tpl.category) {
+        $('expCat').value = tpl.category;
+        loadSubcat();
+        if (tpl.subcategory) $('expSubcat').value = tpl.subcategory;
+      }
+      activatePillByValue('expSourcePills', tpl.source);
+    } else if (tpl.kind === 'saving') {
+      $('savDate').value = today;
+      $('savAmount').value = fmtAmt;
+      $('savNotes').value = tpl.notes || '';
+      activatePillByValue('savingPills', tpl.type);
+      activatePillByValue('savSourcePills', tpl.source);
+    }
+
+    showToast('Template "' + tpl.name + '" diterapkan ⚡', 'info');
+  }
+
+  /** Helper: aktifkan pill dalam group berdasarkan data-val. */
+  function activatePillByValue(groupId, val) {
+    const group = $(groupId);
+    if (!group || !val) return;
+    let matched = false;
+    group.querySelectorAll('.type-pill, .source-pill').forEach(p => {
+      if (p.dataset.val === val) {
+        group.querySelectorAll('.active').forEach(x => x.classList.remove('active'));
+        p.classList.add('active');
+        matched = true;
+      }
+    });
+    return matched;
+  }
+
+  /**
+   * Setelah submit transaksi sukses: kalau checkbox "Simpan sebagai template"
+   * dicentang, kirim addTemplate dengan data terakhir.
+   */
+  async function maybeSaveAsTemplate(kind, lastData) {
+    const checkboxId = kind + 'SaveTpl';
+    const nameId = kind + 'TplName';
+    const cb = $(checkboxId);
+    const nameInp = $(nameId);
+    if (!cb || !cb.checked) return;
+    const name = (nameInp && nameInp.value || '').trim();
+    if (!name) {
+      showToast('⚠️ Nama template kosong — template tidak disimpan.', 'error');
+      return;
+    }
+    const payload = {
+      name: name,
+      kind: kind,
+      amount: lastData.amount,
+      notes: lastData.notes || '',
+      source: lastData.source || '',
+      type: lastData.type || '',
+      category: lastData.category || '',
+      subcategory: lastData.subcategory || ''
+    };
+    const res = await api.addTemplate(payload);
+    if (res && res.success) {
+      showToast(res.msg || 'Template tersimpan ⚡', 'success');
+      // Reset checkbox & name input
+      cb.checked = false;
+      if (nameInp) { nameInp.value = ''; nameInp.hidden = true; }
+      // Reload daftar template
+      loadTemplates();
+    } else {
+      showToast('Gagal simpan template: ' + ((res && res.error) || 'unknown'), 'error');
+    }
+  }
+
+  /** Render daftar template di modal Kelola Template. */
+  function renderTemplateMgmtList() {
+    const list = $('tplMgmtList');
+    if (!list) return;
+    const tpls = state.templates || [];
+    if (!tpls.length) {
+      list.innerHTML = '<div class="empty-state">Belum ada template tersimpan</div>';
+      return;
+    }
+    const kindLbl = { income: 'Pemasukan', expense: 'Pengeluaran', saving: 'Tabungan' };
+    list.innerHTML = tpls.map(t => {
+      const meta = (t.kind === 'expense' ? (t.subcategory || t.category) : t.type) || '—';
+      return `
+        <div class="tpl-mgmt-row">
+          <div class="tpl-mgmt-info">
+            <div class="tpl-mgmt-name">
+              <span class="tpl-mgmt-kind-badge ${escapeHtml(t.kind)}">${escapeHtml(kindLbl[t.kind] || t.kind)}</span>
+              ${escapeHtml(t.name)}
+            </div>
+            <div class="tpl-mgmt-meta">${escapeHtml(meta)} · ${escapeHtml(fmtRp(t.amount || 0))} · ${escapeHtml(t.source || '—')}</div>
+          </div>
+          <button class="icon-btn" data-tpl-del="${t.rowIndex}" aria-label="Hapus template">🗑️</button>
+        </div>
+      `;
+    }).join('');
+    // Bind delete handlers (re-render after delete)
+    list.querySelectorAll('[data-tpl-del]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const rowIndex = parseInt(btn.dataset.tplDel, 10);
+        if (!confirm('Hapus template ini?')) return;
+        const res = await api.deleteTemplate(rowIndex);
+        if (res && res.success) {
+          showToast(res.msg || 'Template dihapus 🗑️', 'success');
+          // Update local state immediately
+          state.templates = (state.templates || []).filter(t => t.rowIndex !== rowIndex);
+          store.setTemplates(state.templates);
+          renderTemplateMgmtList();
+          renderQuickTemplateChips();
+        } else {
+          showToast('Gagal hapus: ' + ((res && res.error) || 'unknown'), 'error');
+        }
+      });
+    });
+  }
+
+  function openTemplateMgmtModal() {
+    renderTemplateMgmtList();
+    openModal('tplMgmtModalOverlay');
   }
 
   // ── Budgeting ──
@@ -1480,6 +1697,7 @@
     await submitWithGuard(async () => {
       const res = await api.addIncome(data);
       handleSubmitResult(res);
+      if (res && res.success) await maybeSaveAsTemplate('income', data);
     }, 'btnSubmitIncome');
   }
 
@@ -1519,6 +1737,7 @@
     await submitWithGuard(async () => {
       const res = await api.addExpense(data);
       handleSubmitResult(res);
+      if (res && res.success) await maybeSaveAsTemplate('expense', data);
     }, 'btnSubmitExpense');
   }
 
@@ -1538,6 +1757,7 @@
     await submitWithGuard(async () => {
       const res = await api.addSaving(data);
       handleSubmitResult(res);
+      if (res && res.success) await maybeSaveAsTemplate('saving', data);
     }, 'btnSubmitSaving');
   }
 

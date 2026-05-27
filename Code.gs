@@ -17,7 +17,8 @@ const SHEET_NAMES = {
   SAVING: 'Savings',
   ASSET: 'Assets',
   DEBT: 'Debts',
-  GOAL: 'Goals'
+  GOAL: 'Goals',
+  TEMPLATE: 'Templates'
 };
 
 /**
@@ -125,6 +126,7 @@ function handleAction_(e) {
       case 'getSettings':            return getSettings();
       case 'getCategories':          return getCategories();
       case 'getCategoryBudgets':     return getCategoryBudgets();
+      case 'listTemplates':          return listTemplates();
       // ── Create ──
       case 'addIncome':              return addIncome(data);
       case 'addExpense':              return addExpense(data);
@@ -133,6 +135,7 @@ function handleAction_(e) {
       case 'addDebt':                return addDebt(data);
       case 'addGoal':                return addGoal(data);
       case 'addGoalDeposit':         return addGoalDeposit(data);
+      case 'addTemplate':            return addTemplate(data);
       // ── Update ──
       case 'editTransaction':        return editTransaction(data);
       case 'updateGoal':             return updateGoal(data);
@@ -142,6 +145,7 @@ function handleAction_(e) {
       case 'deleteTransaction':      return deleteTransaction(data.sheet, data.rowIndex);
       case 'deleteWealthItem':       return deleteWealthItem(data.type, data.rowIndex);
       case 'deleteGoal':             return deleteGoal(data.rowIndex);
+      case 'deleteTemplate':         return deleteTemplate(data.rowIndex);
       // ── Special ──
       case 'generatePDFReport':      return generatePDFReport(data.month, data.year);
       case 'getGeminiDeepAnalysis':  return getGeminiDeepAnalysis(data);
@@ -165,7 +169,8 @@ function initSheets_() {
     { name: SHEET_NAMES.SAVING,  headers: ['Date', 'Type', 'Amount', 'Notes', 'Source'] },
     { name: SHEET_NAMES.ASSET,   headers: ['Date', 'Type', 'Name', 'Value', 'Institution'] },
     { name: SHEET_NAMES.DEBT,    headers: ['Date', 'Type', 'Name', 'Value', 'Institution'] },
-    { name: SHEET_NAMES.GOAL,    headers: ['Date', 'Name', 'Target', 'Saved', 'Deadline', 'Category', 'Notes'] }
+    { name: SHEET_NAMES.GOAL,    headers: ['Date', 'Name', 'Target', 'Saved', 'Deadline', 'Category', 'Notes'] },
+    { name: SHEET_NAMES.TEMPLATE, headers: ['Date', 'Name', 'Kind', 'Type', 'Category', 'Subcategory', 'Amount', 'Source', 'Notes'] }
   ];
   cfg.forEach(c => {
     let sh = ss.getSheetByName(c.name);
@@ -388,6 +393,62 @@ function addGoalDeposit(data) {
     msg: 'Setoran ' + fmtRp_(amount) + ' tercatat 💰',
     newSaved: newSaved
   };
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  CRUD — Templates (Quick Transaction Templates)
+// ════════════════════════════════════════════════════════════════════
+
+function listTemplates() {
+  initSheets_();
+  const rows = getSheetData_(SHEET_NAMES.TEMPLATE);
+  const items = rows
+    .map((r, i) => ({
+      rowIndex: i + 2,
+      name: r[1] || '',
+      kind: (r[2] || 'expense').toString().toLowerCase(),
+      type: r[3] || '',
+      category: r[4] || '',
+      subcategory: r[5] || '',
+      amount: parseFloat(r[6]) || 0,
+      source: r[7] || '',
+      notes: r[8] || ''
+    }))
+    .filter(t => t.name); // skip baris kosong
+  return { success: true, templates: items };
+}
+
+function addTemplate(data) {
+  initSheets_();
+  const name = (data.name || '').toString().trim();
+  if (!name) return { success: false, error: 'Nama template wajib diisi.' };
+  const kind = (data.kind || 'expense').toString().toLowerCase();
+  if (['income', 'expense', 'saving'].indexOf(kind) === -1) {
+    return { success: false, error: 'Kind tidak valid: ' + kind };
+  }
+  SpreadsheetApp.getActiveSpreadsheet()
+    .getSheetByName(SHEET_NAMES.TEMPLATE)
+    .appendRow([
+      new Date(),
+      name,
+      kind,
+      data.type || '',
+      data.category || '',
+      data.subcategory || '',
+      Number(data.amount) || 0,
+      data.source || '',
+      data.notes || ''
+    ]);
+  return { success: true, msg: 'Template "' + name + '" tersimpan ⚡' };
+}
+
+function deleteTemplate(rowIndex) {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.TEMPLATE);
+  if (!sh) throw new Error('Sheet Templates tidak ditemukan');
+  const row = parseInt(rowIndex, 10);
+  if (!row || row < 2) throw new Error('Index baris tidak valid');
+  sh.deleteRow(row);
+  return { success: true, msg: 'Template dihapus 🗑️' };
 }
 
 // ════════════════════════════════════════════════════════════════════
