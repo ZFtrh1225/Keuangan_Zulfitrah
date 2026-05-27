@@ -14,6 +14,7 @@
   const LS_CATEGORIES = LS_KEY_PREFIX + 'categories_v1';
   const LS_TEMPLATES = LS_KEY_PREFIX + 'templates_v1';
   const LS_ONBOARDED = LS_KEY_PREFIX + 'onboarded_v1';
+  const LS_THEME = LS_KEY_PREFIX + 'theme'; // 'dark' | 'light'
 
   const today = new Date();
   const state = {
@@ -111,6 +112,30 @@
   function isOnboarded() { return !!lsGet(LS_ONBOARDED); }
   function setOnboarded() { lsSet(LS_ONBOARDED, true); }
 
+  // ── Theme (light/dark) ──
+  function getTheme() {
+    try { return localStorage.getItem(LS_THEME) || 'dark'; }
+    catch (e) { return 'dark'; }
+  }
+  function setTheme(theme) {
+    try { localStorage.setItem(LS_THEME, theme); }
+    catch (e) { /* noop */ }
+    applyTheme(theme);
+  }
+  function applyTheme(theme) {
+    if (theme === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', '#f8fafc');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', '#070a12');
+    }
+  }
+  // Apply theme as soon as state.js loads (sebelum render) — mencegah flash.
+  applyTheme(getTheme());
+
   // ── Mutations ──
   function setDashboard(d) {
     state.dashboard = d;
@@ -138,6 +163,7 @@
     getCachedTemplates, setCachedTemplates,
     loadSettings, saveSettings,
     isOnboarded, setOnboarded,
+    getTheme, setTheme, applyTheme,
     setDashboard, setTransactions, setGoals, setCategories, setTemplates, setMonthYear
   };
 

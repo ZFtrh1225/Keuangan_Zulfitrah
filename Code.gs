@@ -19,8 +19,34 @@ const SHEET_NAMES = {
   DEBT: 'Debts',
   GOAL: 'Goals',
   TEMPLATE: 'Templates',
-  BILL: 'Bills'
+  BILL: 'Bills',
+  WALLET: 'Wallets',     // Daftar dompet + saldo awal (opening balance)
+  TRANSFER: 'Transfers'  // Transfer antar dompet
 };
+
+// ─── Auth: shared-secret antara frontend & backend ──────────────────
+// Diset via PropertiesService (Script Properties → APP_SECRET).
+// Kalau APP_SECRET belum diset, backend menerima semua request (mode dev).
+// Saat sudah diset, semua action selain getAuthStatus / saveAppSecret WAJIB
+// menyertakan field _secret di body data.
+const PUBLIC_ACTIONS = ['getAuthStatus'];
+
+function getAppSecret_() {
+  try {
+    return PropertiesService.getScriptProperties().getProperty('APP_SECRET') || '';
+  } catch (e) { return ''; }
+}
+
+function verifySecret_(action, data) {
+  const expected = getAppSecret_();
+  if (!expected) return null; // dev-mode, secret belum diset
+  if (PUBLIC_ACTIONS.indexOf(action) !== -1) return null;
+  const got = (data && data._secret) ? String(data._secret) : '';
+  if (got !== expected) {
+    return { success: false, error: 'Unauthorized: APP_SECRET mismatch. Set token di pengaturan.' };
+  }
+  return null;
+}
 
 // Milestone hari berturut-turut (streak) untuk badge motivasi
 const STREAK_BADGES = [7, 14, 30, 60, 90, 180, 365];
@@ -121,6 +147,10 @@ function handleAction_(e) {
   const action = body.action;
   const data = body.data || {};
 
+  // ── Auth check (no-op kalau APP_SECRET belum di-set) ──
+  const authErr = verifySecret_(action, data);
+  if (authErr) return authErr;
+
   try {
     switch (action) {
       // ── Read ──
@@ -131,6 +161,9 @@ function handleAction_(e) {
       case 'getCategories':          return getCategories();
       case 'listTemplates':          return listTemplates();
       case 'listBills':              return listBills(data.month, data.year);
+      case 'listWallets':            return listWallets();
+      case 'listTransfers':          return listTransfers(data.month, data.year);
+      case 'getAuthStatus':          return getAuthStatus();
       // ── Create ──
       case 'addIncome':              return addIncome(data);
       case 'addExpense':              return addExpense(data);
@@ -141,19 +174,31 @@ function handleAction_(e) {
       case 'addGoalDeposit':         return addGoalDeposit(data);
       case 'addTemplate':            return addTemplate(data);
       case 'addBill':                return addBill(data);
+      case 'addWallet':              return addWallet(data);
+      case 'addTransfer':            return addTransfer(data);
       // ── Update ──
       case 'editTransaction':        return editTransaction(data);
       case 'updateGoal':             return updateGoal(data);
+      case 'updateDebt':             return updateDebt(data);
+      case 'updateWallet':           return updateWallet(data);
       case 'saveSettings':           return saveSettings(data);
+      case 'saveAppSecret':          return saveAppSecret(data);
       // ── Delete ──
       case 'deleteTransaction':      return deleteTransaction(data.sheet, data.rowIndex);
       case 'deleteWealthItem':       return deleteWealthItem(data.type, data.rowIndex);
       case 'deleteGoal':             return deleteGoal(data.rowIndex);
       case 'deleteTemplate':         return deleteTemplate(data.rowIndex);
       case 'deleteBill':             return deleteBill(data.rowIndex);
+      case 'deleteWallet':           return deleteWallet(data.rowIndex);
+      case 'deleteTransfer':         return deleteTransfer(data.rowIndex);
       // ── Special ──
       case 'generatePDFReport':      return generatePDFReport(data.month, data.year);
       case 'getGeminiDeepAnalysis':  return getGeminiDeepAnalysis(data);
+      case 'calculateDebtPayoff':    return calculateDebtPayoff(data);
+      case 'calculateFireProjection':return calculateFireProjection(data);
+      case 'parseGoalFromText':      return parseGoalFromText(data);
+      case 'extractReceiptData':     return extractReceiptData(data);
+      case 'getSpendingDNA':         return getSpendingDNA(data);
       default:
         return { success: false, error: 'Action tidak dikenal: ' + action };
     }
@@ -173,14 +218,21 @@ function initSheets_() {
     { name: SHEET_NAMES.EXPENSE, headers: ['Date', 'Category', 'Subcategory', 'Amount', 'Notes', 'Source'] },
     { name: SHEET_NAMES.SAVING,  headers: ['Date', 'Type', 'Amount', 'Notes', 'Source'] },
     { name: SHEET_NAMES.ASSET,   headers: ['Date', 'Type', 'Name', 'Value', 'Institution'] },
-    { name: SHEET_NAMES.DEBT,    headers: ['Date', 'Type', 'Name', 'Value', 'Institution'] },
+    // Debt: kolom MinPayment + InterestRate ditambahkan untuk perhitungan
+    // DSR yang riil & debt-payoff calculator. Sheet lama (5 kolom) akan
+    // di-migrasi otomatis di blok schema-migration di bawah.
+    { name: SHEET_NAMES.DEBT,    headers: ['Date', 'Type', 'Name', 'Value', 'Institution', 'MinPayment', 'InterestRate'] },
     { name: SHEET_NAMES.GOAL,    headers: ['Date', 'Name', 'Target', 'Saved', 'Deadline', 'Category', 'Notes'] },
     // Template transaksi cepat — user simpan transaksi yg sering muncul
     // Kind: 'income' | 'expense' | 'saving'. Untuk expense, pakai Category+Subcategory.
     // Untuk income/saving, pakai TypeText (di kolom Category) — Subcategory kosong.
     { name: SHEET_NAMES.TEMPLATE, headers: ['Name', 'Kind', 'Category', 'Subcategory', 'Amount', 'Source', 'Notes', 'CreatedAt'] },
     // Tagihan/cicilan manual non-recurring (PBB, premi tahunan, dll)
-    { name: SHEET_NAMES.BILL,    headers: ['DueDate', 'Name', 'Amount', 'Notes', 'CreatedAt'] }
+    { name: SHEET_NAMES.BILL,    headers: ['DueDate', 'Name', 'Amount', 'Notes', 'CreatedAt'] },
+    // Wallets: opening balance + metadata per dompet (BRI, Cash, dll)
+    { name: SHEET_NAMES.WALLET,  headers: ['Name', 'OpeningBalance', 'OpeningDate', 'Type', 'Notes', 'CreatedAt'] },
+    // Transfers antar dompet (tidak menambah/mengurangi total kekayaan)
+    { name: SHEET_NAMES.TRANSFER, headers: ['Date', 'FromWallet', 'ToWallet', 'Amount', 'Fee', 'Notes'] }
   ];
   cfg.forEach(c => {
     let sh = ss.getSheetByName(c.name);
@@ -192,8 +244,34 @@ function initSheets_() {
         .setBackground('#0f1623')
         .setFontColor('#00e5b4');
       sh.setFrozenRows(1);
+    } else {
+      // Schema migration: tambah kolom yang belum ada di header.
+      // Aman karena cuma append kolom — data lama tidak tersentuh.
+      const lastCol = sh.getLastColumn();
+      const curHeaders = lastCol > 0
+        ? sh.getRange(1, 1, 1, lastCol).getValues()[0]
+        : [];
+      const missing = c.headers.filter(h => curHeaders.indexOf(h) === -1);
+      if (missing.length) {
+        sh.getRange(1, curHeaders.length + 1, 1, missing.length)
+          .setValues([missing])
+          .setFontWeight('bold')
+          .setBackground('#0f1623')
+          .setFontColor('#00e5b4');
+      }
     }
   });
+}
+
+/**
+ * Cari index kolom berdasarkan header name (1-indexed). Return -1 kalau tidak ada.
+ */
+function colIndex_(sheet, headerName) {
+  const lastCol = sheet.getLastColumn();
+  if (lastCol < 1) return -1;
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  const i = headers.indexOf(headerName);
+  return i === -1 ? -1 : i; // 0-indexed
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -244,11 +322,49 @@ function addAsset(data) {
 
 function addDebt(data) {
   initSheets_();
-  SpreadsheetApp.getActiveSpreadsheet()
-    .getSheetByName(SHEET_NAMES.DEBT)
-    .appendRow([new Date(), data.type, data.name, Number(data.value), data.inst]);
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.DEBT);
+  // Tulis ke 7 kolom: Date, Type, Name, Value, Institution, MinPayment, InterestRate.
+  // Sheet lama yang baru di-migrate juga sudah punya 7 kolom setelah initSheets_().
+  sh.appendRow([
+    new Date(),
+    data.type,
+    data.name,
+    Number(data.value),
+    data.inst,
+    Number(data.minPayment) || 0,
+    Number(data.interestRate) || 0
+  ]);
   invalidateCache_();
   return { success: true, msg: 'Kewajiban berhasil dicatat! 📝' };
+}
+
+/**
+ * Update debt row (untuk edit min payment / interest rate / nilai).
+ */
+function updateDebt(data) {
+  initSheets_();
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.DEBT);
+  if (!sh) throw new Error('Sheet Debts tidak ditemukan');
+  const row = parseInt(data.rowIndex, 10);
+  if (!row || row < 2) throw new Error('Index baris tidak valid');
+
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  const fields = {
+    Type: data.type,
+    Name: data.name,
+    Value: data.value != null ? Number(data.value) : undefined,
+    Institution: data.inst,
+    MinPayment: data.minPayment != null ? Number(data.minPayment) : undefined,
+    InterestRate: data.interestRate != null ? Number(data.interestRate) : undefined
+  };
+  Object.keys(fields).forEach(k => {
+    if (fields[k] === undefined) return;
+    const idx = headers.indexOf(k);
+    if (idx === -1) return;
+    sh.getRange(row, idx + 1).setValue(fields[k]);
+  });
+  invalidateCache_();
+  return { success: true, msg: 'Kewajiban diperbarui ✏️' };
 }
 
 /**
@@ -956,84 +1072,44 @@ function getDashboardData(month, year) {
 
   let debtDetails = [];
   let totalDebts = 0;
+  // Sum minimum-payment dari semua hutang (untuk DSR yang riil).
+  let totalMinPayment = 0;
   allDebts.forEach((r, i) => {
     if (!r[0]) return;
     const val = parseFloat(r[3]) || 0;
+    const minP = parseFloat(r[5]) || 0;       // kolom MinPayment (idx 5)
+    const ir = parseFloat(r[6]) || 0;         // kolom InterestRate (idx 6, % per tahun)
     debtDetails.push({
       rowIndex: i + 2,
       type: r[1] || '-',
       name: r[2] || '-',
       value: val,
-      inst: r[4] || '-'
+      inst: r[4] || '-',
+      minPayment: minP,
+      interestRate: ir
     });
     totalDebts += val;
+    totalMinPayment += minP;
   });
 
-  const netWorth = totalAssets - totalDebts;
-
-  // ── Asset Allocation ──
-  const fixedAssets = totalAssets - liquidAssets - investmentAssets;
-  const assetAllocation = [
-    { label: 'Kas/Bank/E-Wallet', value: liquidAssets, color: '#00e5b4' },
-    { label: 'Investasi', value: investmentAssets, color: '#818cf8' },
-    { label: 'Aset Tetap', value: Math.max(0, fixedAssets), color: '#f59e0b' }
-  ].filter(x => x.value > 0);
-
-  // ── Net Worth History (6 bulan) ──
-  // Net Worth saat ini snapshot, kita estimasi historis = NW - sum(savings + balance) bulan-bulan setelahnya
-  // Pendekatan simple: NW history = NW_now - cumulative future savings & balances surplus
-  let cumulativeFromNow = 0;
-  const netWorthHistory = sixMonths.slice().reverse().map((m, idx) => {
-    if (idx === 0) {
-      return { label: m.label, value: netWorth };
-    }
-    cumulativeFromNow += (m.savings + m.balance);
-    return { label: m.label, value: netWorth - cumulativeFromNow };
-  }).reverse();
-
-  // ── Cashflow Forecast (3 bulan ke depan) ──
-  // Linear projection berdasarkan rata-rata 3 bulan terakhir
-  const last3 = sixMonths.slice(-3);
-  const avgInc = last3.reduce((s, m) => s + m.income, 0) / last3.length;
-  const avgExp = last3.reduce((s, m) => s + m.expenses, 0) / last3.length;
-  const avgSav = last3.reduce((s, m) => s + m.savings, 0) / last3.length;
-  const avgNet = avgInc - avgExp - avgSav;
-  const forecastMonths = [];
-  let projNet = netWorth;
-  for (let i = 1; i <= 3; i++) {
-    let fm = month + i, fy = year;
-    while (fm > 12) { fm -= 12; fy++; }
-    projNet += avgNet + avgSav; // savings & balance both naik kekayaan bersih
-    forecastMonths.push({
-      label: `${mn[fm - 1]} ${fy}`,
-      projectedIncome: avgInc,
-      projectedExpense: avgExp,
-      projectedSaving: avgSav,
-      projectedNet: avgNet,
-      projectedNetWorth: projNet
-    });
-  }
-
-  // ── Ratios ──
-  const debtPayments = sum_(cExp.filter(r => r[1] === 'Kewajiban & Utang'), 3);
-  const dsr = totalInc > 0 ? (debtPayments / totalInc) * 100 : 0;
-
-  const monthsWithExpenseData = uniqueMonthsCount_(allExp, 0);
-  const trueAvgMonthlyExpense = sum_(allExp, 3) / monthsWithExpenseData;
-  const emergencyFundRatio = trueAvgMonthlyExpense > 0
-    ? liquidAssets / trueAvgMonthlyExpense
-    : 0;
-
-  const liquidityRatio = trueAvgMonthlyExpense > 0
-    ? liquidAssets / trueAvgMonthlyExpense
-    : 0;
-
-  const solvencyRatio = totalAssets > 0 ? netWorth / totalAssets : 0;
-
-  const investmentAssetRatio = totalAssets > 0 ? investmentAssets / totalAssets : 0;
-
-  // ── Wallet Balances ──
+  // ── Wallet Balances (with opening balance + transfers) ──
+  // Source of truth untuk dompet: opening balance dari sheet Wallets +
+  // semua transaksi (income/expense/saving) + transfer in/out.
+  const walletConfigs = getSheetData_(SHEET_NAMES.WALLET);
+  const walletMeta = {};      // name → { opening, type, notes }
   const walletBalances = {};
+  walletConfigs.forEach(r => {
+    const name = (r[0] || '').toString().trim();
+    if (!name) return;
+    const opening = parseFloat(r[1]) || 0;
+    walletMeta[name] = {
+      opening: opening,
+      openingDate: toIso_(r[2]),
+      type: r[3] || '',
+      notes: r[4] || ''
+    };
+    walletBalances[name] = opening;
+  });
   allInc.forEach(r => {
     const amt = parseFloat(r[2]) || 0;
     const src = r[4] || 'Cash';
@@ -1049,6 +1125,122 @@ function getDashboardData(month, year) {
     const src = r[4] || 'BRI';
     walletBalances[src] = (walletBalances[src] || 0) - amt;
   });
+  // Transfers: keluar dari FromWallet, masuk ke ToWallet (fee dipotong dari From).
+  const allTransfers = getSheetData_(SHEET_NAMES.TRANSFER);
+  allTransfers.forEach(r => {
+    if (!r[0]) return;
+    const from = (r[1] || '').toString();
+    const to = (r[2] || '').toString();
+    const amt = parseFloat(r[3]) || 0;
+    const fee = parseFloat(r[4]) || 0;
+    if (from) walletBalances[from] = (walletBalances[from] || 0) - amt - fee;
+    if (to) walletBalances[to] = (walletBalances[to] || 0) + amt;
+  });
+
+  // ── Wallet-aware liquid assets (FIX double-count) ──
+  // Dulu: liquidAssets = sum(asset rows tipe Kas/Bank/E-Wallet) — sering
+  // double-count karena user juga mencatat income ke wallet yang sama.
+  // Sekarang: liquidAssets = sum(walletBalances) (single source of truth).
+  // Asset rows tipe Kas tetap disimpan untuk backward-compat tapi tidak
+  // dijumlahkan ke liquid (hanya muncul di daftar aset sebagai info).
+  const walletLiquidTotal = Object.values(walletBalances)
+    .reduce((s, v) => s + (Number(v) > 0 ? Number(v) : 0), 0);
+  if (walletLiquidTotal > 0 || walletConfigs.length > 0) {
+    // Replace asset-derived liquidAssets dengan wallet-derived agar tidak ganda.
+    // Tetap simpan original untuk debug di asset list.
+    const oldLiquid = liquidAssets;
+    liquidAssets = walletLiquidTotal;
+    totalAssets = totalAssets - oldLiquid + walletLiquidTotal;
+  }
+
+  // ── Net Worth (recompute setelah liquid di-fix) ──
+  const netWorthFixed = totalAssets - totalDebts;
+
+  // ── Asset Allocation ──
+  const fixedAssets = totalAssets - liquidAssets - investmentAssets;
+  const assetAllocation = [
+    { label: 'Kas/Bank/E-Wallet', value: liquidAssets, color: '#00e5b4' },
+    { label: 'Investasi', value: investmentAssets, color: '#818cf8' },
+    { label: 'Aset Tetap', value: Math.max(0, fixedAssets), color: '#f59e0b' }
+  ].filter(x => x.value > 0);
+
+  // ── Net Worth History (6 bulan) ──
+  // Cleanly back-calculate: NW(M) = NW_now - sum(income - expenses) for months > M.
+  // Memakai cashflow surplus saja menghindari double-count savings yang
+  // sudah tercerminkan di asset/wallet snapshot bulan berjalan.
+  let cumulativeCashflowFromNow = 0;
+  const netWorthHistory = sixMonths.slice().reverse().map((m, idx) => {
+    if (idx === 0) {
+      return { label: m.label, value: netWorthFixed };
+    }
+    cumulativeCashflowFromNow += (m.income - m.expenses);
+    return { label: m.label, value: netWorthFixed - cumulativeCashflowFromNow };
+  }).reverse();
+
+  // ── Cashflow Forecast (3 bulan ke depan) — pakai MEDIAN trailing 6 ──
+  // Median lebih robust terhadap outlier (mis. THR, bonus tahunan) ketimbang
+  // mean dari 3 bulan terakhir yang gampang misleading.
+  const fcInc = sixMonths.map(m => m.income).filter(x => x > 0);
+  const fcExp = sixMonths.map(m => m.expenses).filter(x => x > 0);
+  const fcSav = sixMonths.map(m => m.savings); // boleh 0
+  const median = (arr) => {
+    if (!arr.length) return 0;
+    const a = arr.slice().sort((x, y) => x - y);
+    const m1 = Math.floor(a.length / 2);
+    return a.length % 2 ? a[m1] : (a[m1 - 1] + a[m1]) / 2;
+  };
+  const avgInc = median(fcInc);
+  const avgExp = median(fcExp);
+  const avgSav = median(fcSav);
+  const avgNet = avgInc - avgExp - avgSav;
+  const forecastMonths = [];
+  let projNet = netWorthFixed;
+  for (let i = 1; i <= 3; i++) {
+    let fm = month + i, fy = year;
+    while (fm > 12) { fm -= 12; fy++; }
+    // NW grows by income-expense per bulan (savings hanya pindah ke asset).
+    projNet += (avgInc - avgExp);
+    forecastMonths.push({
+      label: `${mn[fm - 1]} ${fy}`,
+      projectedIncome: avgInc,
+      projectedExpense: avgExp,
+      projectedSaving: avgSav,
+      projectedNet: avgNet,
+      projectedNetWorth: projNet
+    });
+  }
+
+  // ── Ratios ──
+  // DSR (Debt Service Ratio): Pakai total minimum payment dari sheet Debts
+  // (kewajiban riil). Fallback ke pengeluaran kategori "Kewajiban & Utang"
+  // bulan ini kalau user belum mengisi minimum payment. DSR ideal < 30%.
+  const debtPaymentsFromExp = sum_(cExp.filter(r => r[1] === 'Kewajiban & Utang'), 3);
+  const debtPaymentForDSR = totalMinPayment > 0 ? totalMinPayment : debtPaymentsFromExp;
+  const dsr = totalInc > 0 ? (debtPaymentForDSR / totalInc) * 100 : 0;
+
+  // Avg expense: trailing 6 bulan saja (lebih relevan untuk rasio dana darurat).
+  // Dulu: rata-rata dari SEMUA bulan tercatat — bisa misleading kalau user lama tidak aktif.
+  const trailingMonths = sixMonths.filter(m => m.expenses > 0);
+  const trailingAvgExp = trailingMonths.length
+    ? trailingMonths.reduce((s, m) => s + m.expenses, 0) / trailingMonths.length
+    : 0;
+  // Kalau belum ada 6 bulan data, fallback ke rata-rata semua bulan tercatat.
+  const monthsWithExpenseData = uniqueMonthsCount_(allExp, 0);
+  const trueAvgMonthlyExpense = trailingAvgExp > 0
+    ? trailingAvgExp
+    : (monthsWithExpenseData > 0 ? sum_(allExp, 3) / monthsWithExpenseData : 0);
+
+  const emergencyFundRatio = trueAvgMonthlyExpense > 0
+    ? liquidAssets / trueAvgMonthlyExpense
+    : 0;
+
+  const liquidityRatio = trueAvgMonthlyExpense > 0
+    ? liquidAssets / trueAvgMonthlyExpense
+    : 0;
+
+  const solvencyRatio = totalAssets > 0 ? netWorthFixed / totalAssets : 0;
+
+  const investmentAssetRatio = totalAssets > 0 ? investmentAssets / totalAssets : 0;
 
   // ── Subscription Detector & Upcoming Bills ──
   const subscriptions = detectSubscriptions_(allExp);
@@ -1165,7 +1357,7 @@ function getDashboardData(month, year) {
     totalInc, totalExp, totalSav, balance, savingsRate,
     pTotalInc, pTotalExp, pBalance,
     catMap, pCatMap, needs, wants,
-    liquidAssets, investmentAssets, totalAssets, totalDebts, netWorth,
+    liquidAssets, investmentAssets, totalAssets, totalDebts, netWorth: netWorthFixed,
     dsr, emergencyFundRatio, runwayDays,
     forecastMonths,
     subscriptions,
@@ -1185,14 +1377,16 @@ function getDashboardData(month, year) {
     netWorth: {
       totalAssets,
       totalDebts,
-      netWorth,
+      netWorth: netWorthFixed,
       liquidAssets,
       investmentAssets,
       fixedAssets,
       assetDetails,
       debtDetails,
       assetAllocation,
-      netWorthHistory
+      netWorthHistory,
+      walletMeta: walletMeta,
+      totalMinPayment: totalMinPayment
     },
     forecast: {
       months: forecastMonths,
@@ -1714,4 +1908,719 @@ GAYA & ATURAN:
   } catch (e) {
     return { success: false, error: 'Koneksi AI bermasalah: ' + e.message };
   }
+}
+
+
+
+// ════════════════════════════════════════════════════════════════════
+//  CRUD — Wallets (Opening Balance + metadata per dompet)
+// ════════════════════════════════════════════════════════════════════
+
+/**
+ * Daftar dompet (BRI, Cash, BCA, dll) dengan saldo awal & saldo terkini.
+ * Saldo terkini dihitung dari opening + cashflow + transfers.
+ */
+function listWallets() {
+  initSheets_();
+  const rows = getSheetDataWithRowIndex_(SHEET_NAMES.WALLET);
+  const wallets = rows.map(({ row, rowIndex }) => ({
+    rowIndex: rowIndex,
+    name: (row[0] || '').toString(),
+    opening: parseFloat(row[1]) || 0,
+    openingDate: toIso_(row[2]),
+    type: row[3] || '',
+    notes: row[4] || ''
+  })).filter(w => w.name);
+  return { success: true, wallets: wallets };
+}
+
+function addWallet(data) {
+  initSheets_();
+  const name = String(data.name || '').trim();
+  if (!name) return { success: false, error: 'Nama dompet wajib diisi.' };
+  // Cegah duplikat (case-insensitive)
+  const existing = getSheetData_(SHEET_NAMES.WALLET);
+  const dupe = existing.find(r => (r[0] || '').toString().trim().toLowerCase() === name.toLowerCase());
+  if (dupe) return { success: false, error: 'Dompet "' + name + '" sudah ada.' };
+  SpreadsheetApp.getActiveSpreadsheet()
+    .getSheetByName(SHEET_NAMES.WALLET)
+    .appendRow([
+      name,
+      Number(data.opening) || 0,
+      data.openingDate || new Date(),
+      data.type || '',
+      data.notes || '',
+      new Date()
+    ]);
+  invalidateCache_();
+  return { success: true, msg: 'Dompet "' + name + '" ditambahkan 👛' };
+}
+
+function updateWallet(data) {
+  initSheets_();
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.WALLET);
+  if (!sh) throw new Error('Sheet Wallets tidak ditemukan');
+  const row = parseInt(data.rowIndex, 10);
+  if (!row || row < 2) throw new Error('Index baris tidak valid');
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  const fields = {
+    Name: data.name,
+    OpeningBalance: data.opening != null ? Number(data.opening) : undefined,
+    OpeningDate: data.openingDate,
+    Type: data.type,
+    Notes: data.notes
+  };
+  Object.keys(fields).forEach(k => {
+    if (fields[k] === undefined || fields[k] === null) return;
+    const idx = headers.indexOf(k);
+    if (idx === -1) return;
+    sh.getRange(row, idx + 1).setValue(fields[k]);
+  });
+  invalidateCache_();
+  return { success: true, msg: 'Dompet diperbarui ✏️' };
+}
+
+function deleteWallet(rowIndex) {
+  initSheets_();
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.WALLET);
+  if (!sh) throw new Error('Sheet Wallets tidak ditemukan');
+  const row = parseInt(rowIndex, 10);
+  if (!row || row < 2) throw new Error('Index baris tidak valid');
+  sh.deleteRow(row);
+  invalidateCache_();
+  return { success: true, msg: 'Dompet dihapus 🗑️' };
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  CRUD — Transfers (antar dompet, tidak menambah/mengurangi NW)
+// ════════════════════════════════════════════════════════════════════
+
+function listTransfers(month, year) {
+  initSheets_();
+  const rows = getSheetDataWithRowIndex_(SHEET_NAMES.TRANSFER);
+  let items = rows.map(({ row, rowIndex }) => ({
+    rowIndex: rowIndex,
+    date: toIso_(row[0]),
+    from: row[1] || '',
+    to: row[2] || '',
+    amount: parseFloat(row[3]) || 0,
+    fee: parseFloat(row[4]) || 0,
+    notes: row[5] || ''
+  })).filter(t => t.date);
+
+  if (month && year) {
+    const m = parseInt(month, 10), y = parseInt(year, 10);
+    items = items.filter(t => {
+      const d = new Date(t.date);
+      return !isNaN(d) && d.getFullYear() === y && (d.getMonth() + 1) === m;
+    });
+  }
+  items.sort((a, b) => a.date < b.date ? 1 : -1);
+  return { success: true, transfers: items };
+}
+
+function addTransfer(data) {
+  initSheets_();
+  const from = String(data.from || '').trim();
+  const to = String(data.to || '').trim();
+  const amount = Number(data.amount) || 0;
+  if (!from || !to) return { success: false, error: 'Pilih dompet asal & tujuan.' };
+  if (from === to) return { success: false, error: 'Dompet asal & tujuan tidak boleh sama.' };
+  if (amount <= 0) return { success: false, error: 'Nominal transfer harus > 0.' };
+  SpreadsheetApp.getActiveSpreadsheet()
+    .getSheetByName(SHEET_NAMES.TRANSFER)
+    .appendRow([
+      data.date || new Date(),
+      from,
+      to,
+      amount,
+      Number(data.fee) || 0,
+      data.notes || ''
+    ]);
+  invalidateCache_();
+  return { success: true, msg: `Transfer ${fmtRp_(amount)} dari ${from} → ${to} tercatat 🔁` };
+}
+
+function deleteTransfer(rowIndex) {
+  initSheets_();
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.TRANSFER);
+  if (!sh) throw new Error('Sheet Transfers tidak ditemukan');
+  const row = parseInt(rowIndex, 10);
+  if (!row || row < 2) throw new Error('Index baris tidak valid');
+  sh.deleteRow(row);
+  invalidateCache_();
+  return { success: true, msg: 'Transfer dihapus 🗑️' };
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  Auth: APP_SECRET status & save
+// ════════════════════════════════════════════════════════════════════
+
+/**
+ * Status apakah APP_SECRET sudah di-set di Script Properties.
+ * Tidak mengembalikan secret-nya — hanya boolean.
+ */
+function getAuthStatus() {
+  const secretSet = !!getAppSecret_();
+  return { success: true, secretSet: secretSet };
+}
+
+/**
+ * Set APP_SECRET (one-time setup). Setelah di-set, semua action wajib pakai secret.
+ * Untuk reset/rotate, owner harus ke Script Properties manual.
+ * Ini tidak ber-auth check sendiri (kalau secret belum di-set, siapa saja bisa
+ * set; setelah di-set, action ini otomatis akan butuh secret yang lama).
+ */
+function saveAppSecret(data) {
+  const newSecret = String(data.secret || '').trim();
+  if (!newSecret || newSecret.length < 8) {
+    return { success: false, error: 'Secret minimal 8 karakter.' };
+  }
+  PropertiesService.getScriptProperties().setProperty('APP_SECRET', newSecret);
+  return { success: true, msg: 'APP_SECRET tersimpan. Simpan token ini di tempat aman.' };
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  Debt Payoff Calculator (Snowball vs Avalanche)
+// ════════════════════════════════════════════════════════════════════
+
+/**
+ * Simulasi pelunasan utang dengan extra payment.
+ * data: { extraPayment: number, strategy: 'snowball'|'avalanche'|'both' }
+ *
+ * Snowball: prioritas dari saldo terkecil (psikologi)
+ * Avalanche: prioritas dari bunga tertinggi (matematika)
+ */
+function calculateDebtPayoff(data) {
+  initSheets_();
+  const allDebts = getSheetData_(SHEET_NAMES.DEBT);
+  const debts = allDebts.map((r, i) => ({
+    rowIndex: i + 2,
+    name: r[2] || ('Hutang ' + (i + 1)),
+    balance: parseFloat(r[3]) || 0,
+    minPayment: parseFloat(r[5]) || 0,
+    interestRate: (parseFloat(r[6]) || 0) / 100 // % → decimal
+  })).filter(d => d.balance > 0 && d.minPayment > 0);
+
+  if (!debts.length) {
+    return {
+      success: true,
+      strategies: {},
+      message: 'Belum ada data hutang dengan minimum payment > 0.'
+    };
+  }
+
+  const extra = Number(data.extraPayment) || 0;
+  const strategy = data.strategy || 'both';
+
+  function simulate(orderedDebts, label) {
+    // Deep clone
+    const list = orderedDebts.map(d => ({ ...d }));
+    const timeline = [];
+    let month = 0;
+    let totalInterest = 0;
+    const maxMonths = 600; // safety cap 50 tahun
+    while (list.some(d => d.balance > 0) && month < maxMonths) {
+      month++;
+      // 1) Tambah bunga bulanan
+      list.forEach(d => {
+        if (d.balance > 0) {
+          const interest = d.balance * (d.interestRate / 12);
+          d.balance += interest;
+          totalInterest += interest;
+        }
+      });
+      // 2) Bayar minimum payment
+      list.forEach(d => {
+        if (d.balance > 0) {
+          const pay = Math.min(d.balance, d.minPayment);
+          d.balance -= pay;
+        }
+      });
+      // 3) Sisa extra payment ke debt prioritas (yang masih ada saldonya)
+      let remaining = extra;
+      for (let i = 0; i < list.length && remaining > 0; i++) {
+        if (list[i].balance > 0) {
+          const pay = Math.min(list[i].balance, remaining);
+          list[i].balance -= pay;
+          remaining -= pay;
+        }
+      }
+      // 4) Snapshot timeline tiap bulan (kalau >24 bulan, cuma simpan tiap quarter)
+      if (month <= 24 || month % 3 === 0) {
+        timeline.push({
+          month,
+          totalBalance: list.reduce((s, d) => s + Math.max(0, d.balance), 0),
+          remainingDebts: list.filter(d => d.balance > 0).length
+        });
+      }
+    }
+    return {
+      label: label,
+      monthsToFreedom: month,
+      yearsToFreedom: (month / 12).toFixed(1),
+      totalInterest: totalInterest,
+      timeline: timeline,
+      order: orderedDebts.map(d => d.name)
+    };
+  }
+
+  const result = { success: true, strategies: {} };
+
+  if (strategy === 'snowball' || strategy === 'both') {
+    const ordered = debts.slice().sort((a, b) => a.balance - b.balance);
+    result.strategies.snowball = simulate(ordered, 'Snowball (saldo terkecil dulu)');
+  }
+  if (strategy === 'avalanche' || strategy === 'both') {
+    const ordered = debts.slice().sort((a, b) => b.interestRate - a.interestRate);
+    result.strategies.avalanche = simulate(ordered, 'Avalanche (bunga tertinggi dulu)');
+  }
+  // Recommendation: avalanche selalu lebih hemat secara matematika.
+  if (result.strategies.snowball && result.strategies.avalanche) {
+    const saving = result.strategies.snowball.totalInterest - result.strategies.avalanche.totalInterest;
+    result.recommendation = saving > 0
+      ? `Avalanche menghemat ${fmtRp_(saving)} bunga dibanding Snowball, tapi Snowball lebih cepat memberi "kemenangan kecil" untuk motivasi.`
+      : 'Kedua strategi memberi hasil setara. Pilih yang lebih cocok untuk psikologi Anda.';
+  }
+  result.totalDebt = debts.reduce((s, d) => s + d.balance, 0);
+  result.totalMinPayment = debts.reduce((s, d) => s + d.minPayment, 0);
+  return result;
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  FIRE Projection (Financial Independence Retire Early)
+// ════════════════════════════════════════════════════════════════════
+
+/**
+ * Hitung proyeksi FIRE: berapa tahun sampai modal cukup untuk hidup dari
+ * passive income (rule 4% withdrawal).
+ * data: { monthlyExpense, monthlyContribution, currentInvestment, returnRate, withdrawalRate }
+ */
+function calculateFireProjection(data) {
+  const monthlyExpense = Number(data.monthlyExpense) || 0;
+  const monthlyContrib = Number(data.monthlyContribution) || 0;
+  const current = Number(data.currentInvestment) || 0;
+  const annualReturn = (Number(data.returnRate) || 7) / 100; // default 7% nominal IDR
+  const withdrawalRate = (Number(data.withdrawalRate) || 4) / 100;
+
+  if (monthlyExpense <= 0) {
+    return { success: false, error: 'Pengeluaran bulanan harus > 0 untuk hitung FIRE.' };
+  }
+  const annualExpense = monthlyExpense * 12;
+  const fireNumber = annualExpense / withdrawalRate; // 25× kalau 4%
+
+  // Simulasi bulanan: capital tumbuh dengan return tahunan + kontribusi bulanan
+  const monthlyReturn = annualReturn / 12;
+  let capital = current;
+  let months = 0;
+  const maxMonths = 50 * 12; // cap 50 tahun
+  const timeline = [];
+  while (capital < fireNumber && months < maxMonths) {
+    months++;
+    capital = capital * (1 + monthlyReturn) + monthlyContrib;
+    if (months % 12 === 0 || months === maxMonths) {
+      timeline.push({ year: months / 12, capital: Math.round(capital) });
+    }
+  }
+  const reached = capital >= fireNumber;
+  const yearsLeft = months / 12;
+
+  // Coast FIRE: kalau berhenti kontribusi sekarang, kapan capital cukup
+  let coastMonths = 0, coastCapital = current;
+  if (current > 0 && annualReturn > 0) {
+    while (coastCapital < fireNumber && coastMonths < maxMonths) {
+      coastMonths++;
+      coastCapital *= (1 + monthlyReturn);
+    }
+  } else {
+    coastMonths = maxMonths;
+  }
+  const coastYears = coastCapital >= fireNumber ? coastMonths / 12 : null;
+
+  return {
+    success: true,
+    fireNumber: fireNumber,
+    annualExpense: annualExpense,
+    monthsToFire: reached ? months : null,
+    yearsToFire: reached ? yearsLeft : null,
+    coastYears: coastYears,
+    timeline: timeline,
+    inputs: {
+      monthlyExpense, monthlyContrib, current, annualReturn, withdrawalRate
+    },
+    summary: reached
+      ? `Anda akan FIRE dalam ${yearsLeft.toFixed(1)} tahun (${Math.floor(yearsLeft)} thn ${Math.round((yearsLeft % 1) * 12)} bln) dengan target ${fmtRp_(fireNumber)}.`
+      : `Dengan asumsi sekarang, butuh > 50 tahun. Pertimbangkan tingkatkan kontribusi atau cari instrumen return lebih tinggi.`
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  Smart Goal AI — parse natural language → goal
+// ════════════════════════════════════════════════════════════════════
+
+/**
+ * Parse natural language ke struktur goal pakai Gemini.
+ * Input: { text: "saya mau tabung 50 juta untuk DP rumah dalam 2 tahun" }
+ * Output: { success, goal: { name, target, deadline, category, monthlyNeed, notes } }
+ */
+function parseGoalFromText(data) {
+  const text = String(data.text || '').trim();
+  if (!text) return { success: false, error: 'Teks tujuan kosong.' };
+
+  const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (!apiKey) {
+    // Fallback: regex-based parse sederhana — cukup untuk pola umum.
+    return parseGoalFallback_(text);
+  }
+  const apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + apiKey;
+  const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+
+  const prompt = `Anda adalah parser tujuan keuangan. Ubah kalimat user ke JSON terstruktur.
+
+Tanggal hari ini: ${today}
+
+Kategori valid: "Dana Darurat", "Properti", "Kendaraan", "Pendidikan", "Liburan", "Pernikahan", "Pensiun", "Lainnya"
+
+Output WAJIB valid JSON dengan field:
+{
+  "name": "string (deskripsi singkat tujuan)",
+  "target": number (nominal Rupiah, integer; konversi 'juta'/'jt' → ×1000000, 'ribu'/'rb' → ×1000),
+  "deadline": "yyyy-MM-dd" atau null,
+  "category": "salah satu dari kategori di atas",
+  "notes": "string (opsional, info tambahan)"
+}
+
+Aturan:
+- "tabung 50 juta" → target: 50000000
+- "dalam 2 tahun" → deadline = today + 2 tahun
+- "akhir tahun" → deadline = 31 Des tahun ini
+- "Desember 2027" → deadline: "2027-12-31"
+- Kalau tidak ada deadline disebutkan, deadline: null
+- Kalau ambigu, pilih kategori "Lainnya"
+- HANYA balas JSON murni, tanpa markdown wrapper, tanpa penjelasan.
+
+Input user:
+"${text.replace(/"/g, '\\"')}"`;
+
+  const payload = { contents: [{ parts: [{ text: prompt }] }] };
+  const options = {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+
+  try {
+    const resp = UrlFetchApp.fetch(apiUrl, options);
+    if (resp.getResponseCode() !== 200) {
+      return parseGoalFallback_(text);
+    }
+    const result = JSON.parse(resp.getContentText());
+    const aiText = result.candidates && result.candidates[0]
+      && result.candidates[0].content.parts[0].text || '';
+    // Strip markdown code fence kalau ada
+    const cleaned = aiText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+    const goal = JSON.parse(cleaned);
+    // Hitung monthlyNeed bila ada deadline
+    if (goal.deadline) {
+      const dl = new Date(goal.deadline);
+      if (!isNaN(dl)) {
+        const monthsLeft = Math.max(1, Math.ceil((dl - new Date()) / (30 * 86400000)));
+        goal.monthlyNeed = Math.ceil(goal.target / monthsLeft);
+        goal.monthsLeft = monthsLeft;
+      }
+    }
+    return { success: true, goal: goal, source: 'ai' };
+  } catch (e) {
+    return parseGoalFallback_(text);
+  }
+}
+
+/**
+ * Fallback parser regex saat AI tidak tersedia.
+ * Coba ekstrak nominal & periode dari kalimat sederhana.
+ */
+function parseGoalFallback_(text) {
+  const lower = text.toLowerCase();
+  let target = 0;
+
+  // Coba match: "50 juta" / "50jt" / "Rp 50.000.000"
+  const jtMatch = lower.match(/(\d+[.,]?\d*)\s*(juta|jt|m\b)/);
+  const rbMatch = lower.match(/(\d+[.,]?\d*)\s*(ribu|rb|k\b)/);
+  const rpMatch = lower.match(/(?:rp\s*)?(\d{1,3}(?:[.,]\d{3})+|\d{6,})/);
+  if (jtMatch) target = parseFloat(jtMatch[1].replace(',', '.')) * 1000000;
+  else if (rbMatch) target = parseFloat(rbMatch[1].replace(',', '.')) * 1000;
+  else if (rpMatch) target = parseInt(rpMatch[1].replace(/[.,]/g, ''), 10) || 0;
+
+  // Deadline: "dalam X tahun" / "X bulan"
+  let deadline = null;
+  const yMatch = lower.match(/(\d+)\s*tahun/);
+  const moMatch = lower.match(/(\d+)\s*bulan/);
+  if (yMatch) {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() + parseInt(yMatch[1], 10));
+    deadline = Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  } else if (moMatch) {
+    const d = new Date();
+    d.setMonth(d.getMonth() + parseInt(moMatch[1], 10));
+    deadline = Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+
+  // Kategori naive
+  let category = 'Lainnya';
+  const map = {
+    'rumah': 'Properti', 'kpr': 'Properti', 'apartemen': 'Properti',
+    'mobil': 'Kendaraan', 'motor': 'Kendaraan', 'kendaraan': 'Kendaraan',
+    'kuliah': 'Pendidikan', 'sekolah': 'Pendidikan', 'kursus': 'Pendidikan', 's2': 'Pendidikan',
+    'liburan': 'Liburan', 'umroh': 'Liburan', 'haji': 'Liburan', 'wisata': 'Liburan',
+    'nikah': 'Pernikahan', 'menikah': 'Pernikahan',
+    'pensiun': 'Pensiun', 'fire': 'Pensiun',
+    'darurat': 'Dana Darurat', 'emergency': 'Dana Darurat'
+  };
+  for (const k in map) {
+    if (lower.indexOf(k) !== -1) { category = map[k]; break; }
+  }
+
+  // Name: ambil 50 char pertama yang readable
+  const name = text.length > 60 ? text.substring(0, 57) + '…' : text;
+
+  const goal = { name, target, deadline, category, notes: '' };
+  if (deadline) {
+    const dl = new Date(deadline);
+    if (!isNaN(dl)) {
+      const monthsLeft = Math.max(1, Math.ceil((dl - new Date()) / (30 * 86400000)));
+      goal.monthlyNeed = target > 0 ? Math.ceil(target / monthsLeft) : 0;
+      goal.monthsLeft = monthsLeft;
+    }
+  }
+  return { success: true, goal: goal, source: 'fallback' };
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  Receipt OCR (Gemini Vision) — extract dari foto struk
+// ════════════════════════════════════════════════════════════════════
+
+/**
+ * Extract data struk dari image base64 (jpeg/png).
+ * data: { imageBase64: string, mimeType: 'image/jpeg' }
+ * Output: { success, receipt: { merchant, total, date, items[], suggestedCategory, suggestedSubcategory } }
+ */
+function extractReceiptData(data) {
+  const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (!apiKey) {
+    return { success: false, error: 'GEMINI_API_KEY belum diset di Script Properties.' };
+  }
+  const imageBase64 = String(data.imageBase64 || '');
+  const mime = String(data.mimeType || 'image/jpeg');
+  if (!imageBase64) return { success: false, error: 'Image kosong.' };
+
+  // Limit ukuran (~5MB base64 ≈ 6.7M karakter)
+  if (imageBase64.length > 7000000) {
+    return { success: false, error: 'Image terlalu besar (>5MB). Compress dulu.' };
+  }
+
+  const apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + apiKey;
+  const catNames = CATEGORIES.map(c => c.name).join(', ');
+
+  const prompt = `Anda adalah OCR struk belanja. Ekstrak data dari image dan keluarkan JSON.
+
+Kategori valid: ${catNames}
+
+Format output (HANYA JSON murni, tanpa markdown):
+{
+  "merchant": "nama toko/warung",
+  "total": number (total Rupiah, integer; tanpa Rp/titik/koma),
+  "date": "yyyy-MM-dd" atau null jika tidak terbaca,
+  "items": [{ "name": "string", "qty": number, "price": number }],
+  "suggestedCategory": "salah satu kategori dari list di atas",
+  "suggestedSubcategory": "string (subkategori spesifik, mis. 'Kopi & Cafe')",
+  "notes": "string (catatan singkat tentang struk)"
+}
+
+Aturan:
+- Untuk supermarket → "Makanan Pokok & Minuman"
+- Untuk cafe/restoran → "Makan di Luar & Jajanan"
+- Untuk SPBU/bensin → "Transportasi"
+- Untuk apotek → "Kesehatan & Proteksi"
+- items maksimal 10 entri (skip subtotal, pajak, dll)
+- Kalau tidak yakin, pilih "Lain-lain"
+- Tanggal dalam ISO yyyy-MM-dd`;
+
+  const payload = {
+    contents: [{
+      parts: [
+        { text: prompt },
+        { inline_data: { mime_type: mime, data: imageBase64 } }
+      ]
+    }]
+  };
+
+  try {
+    const resp = UrlFetchApp.fetch(apiUrl, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+    if (resp.getResponseCode() !== 200) {
+      return { success: false, error: 'OCR API error: ' + resp.getContentText().substring(0, 200) };
+    }
+    const result = JSON.parse(resp.getContentText());
+    const aiText = result.candidates && result.candidates[0]
+      && result.candidates[0].content.parts[0].text || '';
+    const cleaned = aiText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+    const receipt = JSON.parse(cleaned);
+    return { success: true, receipt: receipt };
+  } catch (e) {
+    return { success: false, error: 'Gagal parse OCR: ' + e.message };
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  Spending DNA — clustering bulan-bulan dengan pola serupa
+// ════════════════════════════════════════════════════════════════════
+
+/**
+ * Identifikasi "DNA" pengeluaran bulanan: bulan-bulan dengan profil kategori
+ * serupa di-cluster bersama. Memberi insight pola hidup user.
+ *
+ * Pendekatan: untuk tiap bulan, hitung % alokasi per kategori. Lalu bandingkan
+ * antar bulan dengan cosine similarity. Cluster bulan dengan similarity > 0.85.
+ */
+function getSpendingDNA(data) {
+  initSheets_();
+  const allExp = getSheetData_(SHEET_NAMES.EXPENSE);
+  if (!allExp.length) {
+    return { success: false, error: 'Belum ada data pengeluaran.' };
+  }
+
+  // Group by month → category → amount
+  const byMonth = {};
+  allExp.forEach(r => {
+    if (!r[0]) return;
+    const d = new Date(r[0]);
+    if (isNaN(d)) return;
+    const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    const cat = (r[1] || 'Lain-lain').toString();
+    const amt = parseFloat(r[3]) || 0;
+    if (!byMonth[key]) byMonth[key] = { total: 0, cats: {} };
+    byMonth[key].total += amt;
+    byMonth[key].cats[cat] = (byMonth[key].cats[cat] || 0) + amt;
+  });
+
+  const monthKeys = Object.keys(byMonth).sort();
+  if (monthKeys.length < 2) {
+    return { success: false, error: 'Butuh minimal 2 bulan data untuk analisis DNA.' };
+  }
+
+  // Build vector per bulan: % alokasi per kategori (kategori = unique union)
+  const allCats = new Set();
+  monthKeys.forEach(k => Object.keys(byMonth[k].cats).forEach(c => allCats.add(c)));
+  const catList = Array.from(allCats).sort();
+
+  const vectors = monthKeys.map(k => {
+    const m = byMonth[k];
+    const v = catList.map(c => m.total > 0 ? (m.cats[c] || 0) / m.total : 0);
+    return { month: k, total: m.total, vector: v, top: topCat_(m.cats) };
+  });
+
+  // Cosine similarity
+  function cos(a, b) {
+    let dot = 0, na = 0, nb = 0;
+    for (let i = 0; i < a.length; i++) {
+      dot += a[i] * b[i];
+      na += a[i] * a[i];
+      nb += b[i] * b[i];
+    }
+    return (na === 0 || nb === 0) ? 0 : dot / (Math.sqrt(na) * Math.sqrt(nb));
+  }
+
+  // Naive single-link clustering: month → cluster id
+  const SIM_THRESHOLD = 0.85;
+  const clusters = []; // { id, members: [month], centroid: vector }
+  vectors.forEach(v => {
+    let best = -1, bestSim = SIM_THRESHOLD;
+    clusters.forEach((c, i) => {
+      const s = cos(v.vector, c.centroid);
+      if (s > bestSim) { bestSim = s; best = i; }
+    });
+    if (best === -1) {
+      clusters.push({ id: clusters.length, members: [v], centroid: v.vector.slice() });
+    } else {
+      clusters[best].members.push(v);
+      // Update centroid (mean)
+      const c = clusters[best];
+      for (let i = 0; i < c.centroid.length; i++) {
+        c.centroid[i] = c.centroid.reduce((s, _, j) => j === i
+          ? (c.centroid[j] * (c.members.length - 1) + v.vector[j]) / c.members.length
+          : c.centroid[j], 0);
+      }
+    }
+  });
+
+  // Label setiap cluster dari kategori dominan centroid
+  const clusterSummary = clusters.map((c, idx) => {
+    // Top 3 kategori centroid
+    const topIdx = c.centroid
+      .map((val, i) => ({ cat: catList[i], pct: val }))
+      .sort((a, b) => b.pct - a.pct)
+      .slice(0, 3);
+    const totalAvg = c.members.reduce((s, m) => s + m.total, 0) / c.members.length;
+    const profile = labelProfile_(topIdx);
+    return {
+      id: idx,
+      label: profile.label,
+      icon: profile.icon,
+      months: c.members.map(m => m.month),
+      monthCount: c.members.length,
+      avgTotal: totalAvg,
+      topCategories: topIdx
+    };
+  }).sort((a, b) => b.monthCount - a.monthCount);
+
+  // Insight summary
+  const dominant = clusterSummary[0];
+  const recent = vectors[vectors.length - 1];
+  const recentCluster = clusterSummary.find(c => c.months.indexOf(recent.month) !== -1);
+
+  return {
+    success: true,
+    clusters: clusterSummary,
+    monthVectors: vectors.map(v => ({ month: v.month, total: v.total, top: v.top })),
+    dominantProfile: dominant ? dominant.label : null,
+    recentProfile: recentCluster ? recentCluster.label : null,
+    consistency: dominant && vectors.length > 0
+      ? Math.round((dominant.monthCount / vectors.length) * 100)
+      : 0,
+    summary: clusterSummary.length === 1
+      ? 'Pola pengeluaran Anda sangat konsisten — semua bulan masuk profil yang sama.'
+      : `Terdeteksi ${clusterSummary.length} pola berbeda. Bulan ini: "${recentCluster ? recentCluster.label : '-'}".`
+  };
+}
+
+function topCat_(cats) {
+  const ent = Object.entries(cats).sort((a, b) => b[1] - a[1])[0];
+  return ent ? { name: ent[0], amount: ent[1] } : null;
+}
+
+function labelProfile_(top) {
+  if (!top.length) return { label: 'Tidak Aktif', icon: '🌙' };
+  const t = top[0].cat.toLowerCase();
+  if (t.indexOf('makanan') !== -1 || t.indexOf('kebutuhan') !== -1)
+    return { label: 'Bulan Pokok (groceries-heavy)', icon: '🛒' };
+  if (t.indexOf('hiburan') !== -1 || t.indexOf('wisata') !== -1 || t.indexOf('belanja') !== -1)
+    return { label: 'Bulan Indulgent (lifestyle-heavy)', icon: '🛍️' };
+  if (t.indexOf('kewajiban') !== -1)
+    return { label: 'Bulan Kewajiban Berat (debt-heavy)', icon: '💳' };
+  if (t.indexOf('rumah') !== -1 || t.indexOf('utilitas') !== -1)
+    return { label: 'Bulan Tagihan Tetap', icon: '🏠' };
+  if (t.indexOf('makan di luar') !== -1 || t.indexOf('jajanan') !== -1)
+    return { label: 'Bulan Foodie (jajan-heavy)', icon: '🍔' };
+  if (t.indexOf('kesehatan') !== -1)
+    return { label: 'Bulan Kesehatan (medical-heavy)', icon: '🏥' };
+  if (t.indexOf('transport') !== -1)
+    return { label: 'Bulan Mobilitas Tinggi', icon: '🚗' };
+  if (t.indexOf('pendidikan') !== -1)
+    return { label: 'Bulan Pendidikan', icon: '🎓' };
+  return { label: 'Profil ' + top[0].cat, icon: '📊' };
 }
