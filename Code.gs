@@ -47,6 +47,8 @@ const CATEGORIES = [
     subcategories: ['SPP/UKT/Uang Kuliah', 'Buku & Jurnal Kuliah', 'Kursus/Sertifikasi', 'Alat Tulis/Software', 'Pelatihan/Workshop', 'Lainnya'] },
   { name: 'Keluarga & Tanggungan', type: 'needs', icon: '👨‍👩‍👧',
     subcategories: ['Uang Orang Tua', 'Kebutuhan Adik/Anak', 'Asisten Rumah Tangga', 'Lainnya'] },
+  { name: 'Kantor', type: 'needs', icon: '🏢',
+    subcategories: ['Rokok', 'Makanan/Minuman', 'Lainnya'] },
 
   // ── WANTS (Keinginan) ──
   { name: 'Makan di Luar & Jajanan', type: 'wants', icon: '🍔',
