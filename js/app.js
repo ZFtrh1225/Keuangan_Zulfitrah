@@ -842,7 +842,13 @@
     c.querySelectorAll('[data-wealth-del]').forEach(btn => {
       btn.addEventListener('click', async () => {
         const [t, ri] = btn.dataset.wealthDel.split('|');
-        if (!confirm('Hapus data ini secara permanen?')) return;
+        const ok = await MT.dialog.confirm('Hapus data ini secara permanen?', {
+          title: 'Konfirmasi Hapus',
+          danger: true,
+          okLabel: 'Hapus',
+          icon: '🗑️'
+        });
+        if (!ok) return;
         showToast('Menghapus…', 'info');
         const res = await api.deleteWealthItem(t, parseInt(ri, 10));
         if (res.success) {
@@ -1129,7 +1135,13 @@
   }
 
   async function confirmDeleteEditedTx() {
-    if (!confirm('Hapus transaksi ini secara permanen?')) return;
+    const ok = await MT.dialog.confirm('Hapus transaksi ini secara permanen?', {
+      title: 'Konfirmasi Hapus',
+      danger: true,
+      okLabel: 'Hapus',
+      icon: '🗑️'
+    });
+    if (!ok) return;
     const kind = $('editKind').value;
     const rowIndex = parseInt($('editRowIndex').value, 10);
     const res = await api.deleteTransaction(kind, rowIndex);
@@ -1207,7 +1219,11 @@
     grid.querySelectorAll('[data-goal-del]').forEach(b => {
       b.addEventListener('click', async e => {
         e.stopPropagation();
-        if (!confirm('Hapus tujuan ini?')) return;
+        const ok = await MT.dialog.confirm('Hapus tujuan ini?', {
+          title: 'Hapus Tujuan',
+          danger: true, okLabel: 'Hapus', icon: '🎯'
+        });
+        if (!ok) return;
         const res = await api.deleteGoal(parseInt(b.dataset.goalDel, 10));
         if (res.success) { showToast(res.msg, 'success'); loadGoals(); }
         else showToast('Gagal: ' + res.error, 'error');
@@ -1402,7 +1418,11 @@
     if (!cat || !data.date || data.amount <= 0) return showToast('Lengkapi kategori, tanggal & jumlah!', 'error');
     const bal = state.wallets[data.source] || 0;
     if (data.amount > bal) {
-      if (!confirm(`⚠️ Saldo ${data.source} hanya ${fmtRp(bal)} (kurang ${fmtRp(data.amount - bal)}). Tetap simpan?`)) return;
+      const ok = await MT.dialog.confirm(
+        `Saldo ${data.source} hanya ${fmtRp(bal)} (kurang ${fmtRp(data.amount - bal)}). Tetap simpan?`,
+        { title: 'Saldo Dompet Tidak Cukup', type: 'warn', icon: '⚠️', okLabel: 'Tetap Simpan' }
+      );
+      if (!ok) return;
     }
     // ── Envelope budget warning ──
     // Cek apakah pengeluaran ini akan melewati plafon kategori (jika ada).
@@ -1413,7 +1433,11 @@
       const newPct = (newSpent / envelope.budget) * 100;
       if (newPct >= 100 && envelope.pct < 100) {
         const over = newSpent - envelope.budget;
-        if (!confirm(`🚫 Plafon "${cat}" akan terlampaui!\n\nPlafon: ${fmtRp(envelope.budget)}\nSudah dipakai: ${fmtRp(envelope.spent)}\nTransaksi ini: ${fmtRp(data.amount)}\n→ Total: ${fmtRp(newSpent)} (${newPct.toFixed(0)}%)\n\nLewat ${fmtRp(over)}. Tetap simpan?`)) return;
+        const ok = await MT.dialog.confirm(
+          `Plafon "${cat}" akan terlampaui!\n\nPlafon: ${fmtRp(envelope.budget)}\nSudah dipakai: ${fmtRp(envelope.spent)}\nTransaksi ini: ${fmtRp(data.amount)}\n→ Total: ${fmtRp(newSpent)} (${newPct.toFixed(0)}%)\n\nLewat ${fmtRp(over)}. Tetap simpan?`,
+          { title: 'Plafon Kategori Akan Terlampaui', type: 'danger', icon: '🚫', okLabel: 'Tetap Simpan' }
+        );
+        if (!ok) return;
       } else if (newPct >= 90 && envelope.pct < 90) {
         showToast(`⚠️ ${cat} sudah ${newPct.toFixed(0)}% dari plafon (${fmtRp(newSpent)}/${fmtRp(envelope.budget)})`, 'info');
       }
@@ -1435,7 +1459,11 @@
     if (!data.date || data.amount <= 0) return showToast('Lengkapi tanggal & jumlah!', 'error');
     const bal = state.wallets[data.source] || 0;
     if (data.amount > bal) {
-      if (!confirm(`⚠️ Saldo ${data.source} hanya ${fmtRp(bal)}. Tetap simpan?`)) return;
+      const ok = await MT.dialog.confirm(
+        `Saldo ${data.source} hanya ${fmtRp(bal)}. Tetap simpan?`,
+        { title: 'Saldo Tidak Cukup', type: 'warn', icon: '⚠️', okLabel: 'Tetap Simpan' }
+      );
+      if (!ok) return;
     }
     await submitWithGuard(async () => {
       const res = await api.addSaving(data);
@@ -1902,7 +1930,10 @@
     wrap.querySelectorAll('[data-tpl-del]').forEach(btn => {
       btn.addEventListener('click', async e => {
         e.stopPropagation();
-        if (!confirm('Hapus template ini?')) return;
+        const ok = await MT.dialog.confirm('Hapus template ini?', {
+          title: 'Hapus Template', danger: true, okLabel: 'Hapus', icon: '🗑️'
+        });
+        if (!ok) return;
         const ri = parseInt(btn.dataset.tplDel, 10);
         const res = await api.deleteTemplate(ri);
         if (res.success) {
@@ -1959,7 +1990,11 @@
       return;
     }
     const defaultName = (sub || cat) + (amt > 0 ? ' ' + fmtRpShort(amt) : '');
-    const name = prompt('Nama template:', defaultName);
+    const name = await MT.dialog.prompt('Nama template:', {
+      title: 'Simpan Template Cepat',
+      defaultValue: defaultName,
+      placeholder: 'mis. Kopi pagi'
+    });
     if (!name || !name.trim()) return;
     const res = await api.addTemplate({
       name: name.trim(),
@@ -2063,7 +2098,10 @@
       wrap.querySelectorAll('[data-bill-del]').forEach(btn => {
         btn.addEventListener('click', async e => {
           e.stopPropagation();
-          if (!confirm('Hapus tagihan ini?')) return;
+          const ok = await MT.dialog.confirm('Hapus tagihan ini?', {
+            title: 'Hapus Tagihan', danger: true, okLabel: 'Hapus', icon: '📅'
+          });
+          if (!ok) return;
           const ri = parseInt(btn.dataset.billDel, 10);
           const res = await api.deleteBill(ri);
           if (res.success) {
@@ -2129,4 +2167,647 @@
     }
   }
 
+  // ════════════════════════════════════════════════════════════════
+  //  THEME TOGGLE (light/dark)
+  // ════════════════════════════════════════════════════════════════
+  function setupThemeToggle() {
+    const btn = $('btnTheme');
+    if (!btn) return;
+    const apply = (theme) => {
+      btn.textContent = theme === 'light' ? '🌙' : '☀️';
+      btn.title = theme === 'light' ? 'Beralih ke dark mode' : 'Beralih ke light mode';
+    };
+    apply(store.getTheme());
+    btn.addEventListener('click', () => {
+      const next = store.getTheme() === 'light' ? 'dark' : 'light';
+      store.setTheme(next);
+      apply(next);
+      // Re-render charts agar mengikuti warna tema baru.
+      if (state.dashboard) renderAll(state.dashboard);
+    });
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  AUTH (APP_SECRET token modal)
+  // ════════════════════════════════════════════════════════════════
+  async function openAuthModal() {
+    const cur = api.getSecret();
+    const status = await api.getAuthStatus();
+    const setOnServer = status && status.success && status.secretSet;
+    const overlay = $('authModalOverlay');
+    if (!overlay) return;
+    $('authStatusBadge').textContent = setOnServer
+      ? '🔒 Backend mode: secret aktif'
+      : '🔓 Backend mode: terbuka (no secret)';
+    $('authStatusBadge').className = 'auth-status-badge ' + (setOnServer ? 'on' : 'off');
+    $('authTokenInput').value = cur;
+    $('authNewSecret').value = '';
+    openModal('authModalOverlay');
+  }
+
+  async function saveAuthToken() {
+    const v = ($('authTokenInput').value || '').trim();
+    api.setSecret(v);
+    showToast(v ? '🔒 Token tersimpan' : '🔓 Token dihapus', 'success');
+    closeModal('authModalOverlay');
+    // Refresh dashboard agar request berikutnya pakai token baru.
+    store.invalidateAllCache();
+    loadDashboard();
+  }
+
+  async function rotateAppSecret() {
+    const newS = ($('authNewSecret').value || '').trim();
+    if (newS.length < 8) {
+      showToast('Secret minimal 8 karakter', 'error');
+      return;
+    }
+    const ok = await MT.dialog.confirm(
+      'Setelah disimpan, semua request WAJIB pakai secret baru. Pastikan Anda menyimpannya. Lanjutkan?',
+      { title: 'Rotate APP_SECRET', type: 'warn', icon: '🔑' }
+    );
+    if (!ok) return;
+    const res = await api.saveAppSecret(newS);
+    if (res.success) {
+      api.setSecret(newS);
+      $('authTokenInput').value = newS;
+      $('authNewSecret').value = '';
+      showToast('Secret baru aktif', 'success');
+      // Re-test status
+      const st = await api.getAuthStatus();
+      if (st.success && st.secretSet) {
+        $('authStatusBadge').textContent = '🔒 Backend mode: secret aktif';
+        $('authStatusBadge').className = 'auth-status-badge on';
+      }
+    } else {
+      showToast('Gagal: ' + (res.error || 'unknown'), 'error');
+    }
+  }
+
+  // Listen 'mt:auth-required' event dari api.js ketika backend balas Unauthorized
+  window.addEventListener('mt:auth-required', () => {
+    showToast('Backend butuh token akses. Buka Pengaturan → Token Akses.', 'error');
+  });
+
+  // ════════════════════════════════════════════════════════════════
+  //  WALLETS — Saldo Awal + Daftar Dompet
+  // ════════════════════════════════════════════════════════════════
+  async function openWalletsModal() {
+    openModal('walletsModalOverlay');
+    $('walletsList').innerHTML = '<div class="empty-state">Memuat dompet…</div>';
+    const res = await api.listWallets();
+    state.walletsList = (res && res.wallets) || [];
+    renderWalletsList();
+  }
+
+  function renderWalletsList() {
+    const wrap = $('walletsList');
+    const wallets = state.walletsList || [];
+    const balances = state.wallets || {};
+    if (!wallets.length) {
+      wrap.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">👛</div>
+          Belum ada dompet terdaftar. Tambah dompet pertama untuk mulai tracking saldo awal.
+        </div>
+      `;
+      return;
+    }
+    wrap.innerHTML = wallets.map(w => {
+      const cur = balances[w.name] || 0;
+      const cls = cur > 0 ? 'positive' : cur < 0 ? 'negative' : 'zero';
+      return `
+        <div class="wallet-mgmt-row">
+          <div class="wallet-mgmt-info">
+            <div class="wallet-mgmt-name">${walletIcon(w.name)} ${escapeHtml(w.name)}</div>
+            <div class="wallet-mgmt-meta">
+              Saldo awal: ${fmtRp(w.opening)}${w.openingDate ? ' · ' + fmtDateShort(w.openingDate) : ''}
+              ${w.type ? ' · ' + escapeHtml(w.type) : ''}
+            </div>
+          </div>
+          <div class="wallet-mgmt-bal">
+            <div class="wallet-mgmt-cur ${cls}">${fmtRp(cur)}</div>
+            <div class="wallet-mgmt-actions">
+              <button class="icon-btn" data-wallet-edit="${w.rowIndex}" title="Edit">✏️</button>
+              <button class="icon-btn" data-wallet-del="${w.rowIndex}" title="Hapus">🗑️</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    wrap.querySelectorAll('[data-wallet-edit]').forEach(b => {
+      b.addEventListener('click', () => {
+        const w = wallets.find(x => x.rowIndex === parseInt(b.dataset.walletEdit, 10));
+        if (w) openWalletForm(w);
+      });
+    });
+    wrap.querySelectorAll('[data-wallet-del]').forEach(b => {
+      b.addEventListener('click', async () => {
+        const ri = parseInt(b.dataset.walletDel, 10);
+        const w = wallets.find(x => x.rowIndex === ri);
+        const ok = await MT.dialog.confirm(
+          `Hapus dompet "${w ? w.name : ''}"? Ini hanya menghapus baris konfigurasi (saldo awal). Transaksi yang sudah tercatat tidak terhapus.`,
+          { title: 'Hapus Dompet', danger: true, okLabel: 'Hapus', icon: '👛' }
+        );
+        if (!ok) return;
+        const res = await api.deleteWallet(ri);
+        if (res.success) {
+          showToast(res.msg, 'success');
+          openWalletsModal();
+          store.invalidateAllCache();
+          loadDashboard();
+        } else showToast('Gagal: ' + res.error, 'error');
+      });
+    });
+  }
+
+  function openWalletForm(wallet) {
+    const isEdit = !!wallet;
+    $('walletFormTitle').textContent = isEdit ? '✏️ Edit Dompet' : '👛 Dompet Baru';
+    $('walletFormRow').value = isEdit ? wallet.rowIndex : '';
+    $('walletName').value = isEdit ? wallet.name : '';
+    $('walletName').disabled = isEdit; // nama tidak bisa diubah (jadi key transaksi)
+    $('walletOpening').value = isEdit ? Number(wallet.opening || 0).toLocaleString('id-ID') : '';
+    $('walletOpeningDate').value = isEdit ? (wallet.openingDate || '') : new Date().toISOString().split('T')[0];
+    $('walletType').value = isEdit ? (wallet.type || 'Bank') : 'Bank';
+    $('walletNotes').value = isEdit ? (wallet.notes || '') : '';
+    setupCurrencyMasks();
+    openModal('walletFormOverlay');
+    setTimeout(() => (isEdit ? $('walletOpening') : $('walletName')).focus(), 200);
+  }
+
+  async function submitWalletForm() {
+    const rowIndex = $('walletFormRow').value;
+    const data = {
+      name: $('walletName').value.trim(),
+      opening: parseRp($('walletOpening').value),
+      openingDate: $('walletOpeningDate').value,
+      type: $('walletType').value,
+      notes: $('walletNotes').value.trim()
+    };
+    if (!data.name) {
+      showToast('Nama dompet wajib diisi', 'error');
+      return;
+    }
+    await submitWithGuard(async () => {
+      const res = rowIndex
+        ? await api.updateWallet(Object.assign({ rowIndex: parseInt(rowIndex, 10) }, data))
+        : await api.addWallet(data);
+      if (res.success) {
+        showToast(res.msg, 'success');
+        closeModal('walletFormOverlay');
+        openWalletsModal();
+        store.invalidateAllCache();
+        loadDashboard();
+      } else {
+        showToast('Gagal: ' + res.error, 'error');
+      }
+    }, 'btnSubmitWalletForm', 'Menyimpan…');
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  TRANSFER antar dompet
+  // ════════════════════════════════════════════════════════════════
+  function openTransferModal() {
+    // Populate dropdown dari walletBalances + walletsList (kalau ada)
+    const balances = state.wallets || {};
+    const names = Object.keys(balances);
+    if (!names.length) {
+      MT.dialog.alert('Belum ada dompet dengan saldo. Catat transaksi pemasukan dulu atau set saldo awal di Pengaturan → Dompet.', {
+        title: 'Tidak Bisa Transfer', icon: '👛'
+      });
+      return;
+    }
+    const opts = names.map(n => `<option value="${escapeHtml(n)}">${walletIcon(n)} ${escapeHtml(n)} (${fmtRp(balances[n])})</option>`).join('');
+    $('transferFrom').innerHTML = opts;
+    $('transferTo').innerHTML = opts;
+    if (names[1]) $('transferTo').value = names[1];
+    $('transferDate').value = new Date().toISOString().split('T')[0];
+    $('transferAmount').value = '';
+    $('transferFee').value = '';
+    $('transferNotes').value = '';
+    setupCurrencyMasks();
+    openModal('transferModalOverlay');
+    setTimeout(() => $('transferAmount').focus(), 200);
+  }
+
+  async function submitTransfer() {
+    const data = {
+      date: $('transferDate').value,
+      from: $('transferFrom').value,
+      to: $('transferTo').value,
+      amount: parseRp($('transferAmount').value),
+      fee: parseRp($('transferFee').value),
+      notes: $('transferNotes').value.trim()
+    };
+    if (!data.from || !data.to) return showToast('Pilih dompet asal & tujuan', 'error');
+    if (data.from === data.to) return showToast('Dompet asal & tujuan tidak boleh sama', 'error');
+    if (data.amount <= 0) return showToast('Nominal transfer harus > 0', 'error');
+    const bal = (state.wallets || {})[data.from] || 0;
+    if (data.amount + data.fee > bal) {
+      const ok = await MT.dialog.confirm(
+        `Saldo ${data.from} hanya ${fmtRp(bal)}. Tetap transfer ${fmtRp(data.amount + data.fee)}?`,
+        { title: 'Saldo Tidak Cukup', type: 'warn', icon: '⚠️', okLabel: 'Tetap Transfer' }
+      );
+      if (!ok) return;
+    }
+    await submitWithGuard(async () => {
+      const res = await api.addTransfer(data);
+      if (res.success) {
+        showToast(res.msg, 'success');
+        closeModal('transferModalOverlay');
+        store.invalidateAllCache();
+        loadDashboard();
+      } else {
+        showToast('Gagal: ' + res.error, 'error');
+      }
+    }, 'btnSubmitTransfer', 'Memproses…');
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  SMART GOAL AI — parse natural language → goal
+  // ════════════════════════════════════════════════════════════════
+  function openSmartGoalModal() {
+    $('smartGoalText').value = '';
+    $('smartGoalPreview').hidden = true;
+    $('smartGoalPreview').innerHTML = '';
+    openModal('smartGoalModalOverlay');
+    setTimeout(() => $('smartGoalText').focus(), 200);
+  }
+
+  async function submitSmartGoal() {
+    const text = $('smartGoalText').value.trim();
+    if (!text) return showToast('Ketik tujuan dulu', 'error');
+    await submitWithGuard(async () => {
+      const res = await api.parseGoalFromText(text);
+      if (!res.success) return showToast('Gagal parse: ' + res.error, 'error');
+      const g = res.goal || {};
+      $('smartGoalPreview').hidden = false;
+      $('smartGoalPreview').innerHTML = `
+        <div class="smart-goal-preview-row"><b>Nama:</b> ${escapeHtml(g.name || '-')}</div>
+        <div class="smart-goal-preview-row"><b>Target:</b> ${fmtRp(g.target || 0)}</div>
+        <div class="smart-goal-preview-row"><b>Deadline:</b> ${g.deadline ? fmtDateLong(g.deadline) : '— (tidak ada)'}</div>
+        <div class="smart-goal-preview-row"><b>Kategori:</b> ${escapeHtml(g.category || 'Lainnya')}</div>
+        ${g.monthlyNeed ? `<div class="smart-goal-preview-row"><b>Setoran bulanan dibutuhkan:</b> ${fmtRp(g.monthlyNeed)} (${g.monthsLeft} bln)</div>` : ''}
+        <div class="smart-goal-preview-row muted">Sumber: ${escapeHtml(res.source || 'AI')}</div>
+        <div class="smart-goal-actions">
+          <button class="btn btn-ghost" id="smartGoalEdit">✏️ Edit Manual</button>
+          <button class="btn-submit btn-success" id="smartGoalAccept">✅ Buat Tujuan Ini</button>
+        </div>
+      `;
+      $('smartGoalAccept').addEventListener('click', async () => {
+        const create = await api.addGoal({
+          name: g.name || text.substring(0, 60),
+          target: g.target || 0,
+          saved: 0,
+          deadline: g.deadline || '',
+          category: g.category || 'Lainnya',
+          notes: 'Dibuat dari: "' + text.substring(0, 100) + '"'
+        });
+        if (create.success) {
+          showToast('Tujuan dibuat 🎯', 'success');
+          closeModal('smartGoalModalOverlay');
+          loadGoals();
+        } else {
+          showToast('Gagal: ' + create.error, 'error');
+        }
+      });
+      $('smartGoalEdit').addEventListener('click', () => {
+        closeModal('smartGoalModalOverlay');
+        openGoalModal(null);
+        // Pre-fill form goal manual
+        $('goalName').value = g.name || '';
+        $('goalTarget').value = (g.target || 0).toLocaleString('id-ID');
+        $('goalDeadline').value = g.deadline || '';
+        $('goalCategory').value = g.category || 'Lainnya';
+      });
+    }, 'btnSubmitSmartGoal', 'Parsing…');
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  RECEIPT OCR (Gemini Vision)
+  // ════════════════════════════════════════════════════════════════
+  function openReceiptModal() {
+    $('receiptFile').value = '';
+    $('receiptPreview').innerHTML = '';
+    $('receiptResult').hidden = true;
+    openModal('receiptModalOverlay');
+  }
+
+  function setupReceiptInput() {
+    const fileEl = $('receiptFile');
+    if (!fileEl) return;
+    fileEl.addEventListener('change', async () => {
+      const file = fileEl.files && fileEl.files[0];
+      if (!file) return;
+      if (!/^image\//.test(file.type)) {
+        showToast('Pilih file gambar (jpg/png)', 'error');
+        return;
+      }
+      // Resize ke max 1280px untuk hemat bandwidth ke Gemini
+      const dataUrl = await resizeImage(file, 1280, 0.85);
+      $('receiptPreview').innerHTML = `<img src="${dataUrl}" alt="Preview struk" />`;
+      const base64 = dataUrl.split(',')[1] || '';
+      $('receiptResult').hidden = true;
+      await submitWithGuard(async () => {
+        const res = await api.extractReceiptData(base64, 'image/jpeg');
+        if (!res.success) {
+          showToast('OCR gagal: ' + res.error, 'error');
+          return;
+        }
+        const r = res.receipt || {};
+        $('receiptResult').hidden = false;
+        $('receiptResult').innerHTML = `
+          <div class="receipt-result-head">📝 Hasil OCR</div>
+          <div class="receipt-row"><b>Merchant:</b> ${escapeHtml(r.merchant || '-')}</div>
+          <div class="receipt-row"><b>Tanggal:</b> ${r.date ? fmtDateLong(r.date) : '-'}</div>
+          <div class="receipt-row"><b>Total:</b> ${fmtRp(r.total || 0)}</div>
+          <div class="receipt-row"><b>Kategori:</b> ${escapeHtml(r.suggestedCategory || 'Lain-lain')}</div>
+          <div class="receipt-row"><b>Subkategori:</b> ${escapeHtml(r.suggestedSubcategory || '')}</div>
+          ${r.items && r.items.length ? `
+            <div class="receipt-items-head">Item (${r.items.length}):</div>
+            <ul class="receipt-items">
+              ${r.items.slice(0, 8).map(it => `<li>${escapeHtml(it.name || '-')} × ${it.qty || 1} = ${fmtRp(it.price || 0)}</li>`).join('')}
+            </ul>
+          ` : ''}
+          <button class="btn-submit btn-success mt-10" id="receiptCreate">💸 Buat Pengeluaran dari Struk Ini</button>
+        `;
+        $('receiptCreate').addEventListener('click', () => {
+          // Pre-fill form pengeluaran lalu tutup modal OCR
+          closeModal('receiptModalOverlay');
+          openModal('modalOverlay');
+          switchTxTab('expense');
+          if (r.suggestedCategory) {
+            $('expCat').value = r.suggestedCategory;
+            loadSubcat();
+            if (r.suggestedSubcategory) {
+              setTimeout(() => { $('expSubcat').value = r.suggestedSubcategory; }, 50);
+            }
+          }
+          if (r.total) $('expAmount').value = Number(r.total).toLocaleString('id-ID');
+          if (r.date) $('expDate').value = r.date;
+          if (r.merchant) $('expNotes').value = r.merchant + (r.notes ? ' · ' + r.notes : '');
+          showToast('Form terisi dari struk ✅ — review & simpan', 'info');
+        });
+      }, 'btnReceiptUpload', 'Membaca struk dengan AI…');
+    });
+  }
+
+  /**
+   * Resize image file ke max dimension. Return data URL JPEG.
+   * Mencegah upload base64 raksasa ke Gemini Vision.
+   */
+  function resizeImage(file, maxDim, quality) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          let w = img.width, h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
+            else { w = Math.round(w * maxDim / h); h = maxDim; }
+          }
+          const c = document.createElement('canvas');
+          c.width = w; c.height = h;
+          c.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve(c.toDataURL('image/jpeg', quality || 0.85));
+        };
+        img.onerror = reject;
+        img.src = reader.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  DEBT PAYOFF CALCULATOR (Snowball vs Avalanche)
+  // ════════════════════════════════════════════════════════════════
+  function openDebtPayoffModal() {
+    $('debtPayoffExtra').value = '';
+    $('debtPayoffResult').hidden = true;
+    $('debtPayoffResult').innerHTML = '';
+    setupCurrencyMasks();
+    openModal('debtPayoffModalOverlay');
+  }
+
+  async function runDebtPayoff() {
+    const extra = parseRp($('debtPayoffExtra').value);
+    await submitWithGuard(async () => {
+      const res = await api.calculateDebtPayoff({ extraPayment: extra, strategy: 'both' });
+      if (!res.success) return showToast('Gagal: ' + res.error, 'error');
+      if (!res.strategies || (!res.strategies.snowball && !res.strategies.avalanche)) {
+        $('debtPayoffResult').hidden = false;
+        $('debtPayoffResult').innerHTML = `<div class="muted">${escapeHtml(res.message || 'Tidak ada hutang dengan minimum payment > 0. Edit hutang dulu untuk isi minimum payment & bunga.')}</div>`;
+        return;
+      }
+      const s = res.strategies.snowball;
+      const a = res.strategies.avalanche;
+      $('debtPayoffResult').hidden = false;
+      $('debtPayoffResult').innerHTML = `
+        <div class="dp-summary">
+          <div><b>Total hutang:</b> ${fmtRp(res.totalDebt)}</div>
+          <div><b>Total min payment:</b> ${fmtRp(res.totalMinPayment)}/bln</div>
+          <div><b>Extra payment:</b> ${fmtRp(extra)}/bln</div>
+        </div>
+        <div class="dp-strategies">
+          <div class="dp-card">
+            <div class="dp-title">❄️ Snowball</div>
+            <div class="dp-meta">Saldo terkecil dulu (psikologi)</div>
+            <div class="dp-stat"><span>Lunas dalam:</span> <b>${s.yearsToFreedom} thn</b> (${s.monthsToFreedom} bln)</div>
+            <div class="dp-stat"><span>Total bunga:</span> <b>${fmtRp(s.totalInterest)}</b></div>
+            <div class="dp-order">Urutan: ${s.order.map(n => escapeHtml(n)).join(' → ')}</div>
+          </div>
+          <div class="dp-card recommended">
+            <div class="dp-title">🏔️ Avalanche</div>
+            <div class="dp-meta">Bunga tertinggi dulu (matematika)</div>
+            <div class="dp-stat"><span>Lunas dalam:</span> <b>${a.yearsToFreedom} thn</b> (${a.monthsToFreedom} bln)</div>
+            <div class="dp-stat"><span>Total bunga:</span> <b>${fmtRp(a.totalInterest)}</b></div>
+            <div class="dp-order">Urutan: ${a.order.map(n => escapeHtml(n)).join(' → ')}</div>
+          </div>
+        </div>
+        ${res.recommendation ? `<div class="dp-rec">${escapeHtml(res.recommendation)}</div>` : ''}
+      `;
+    }, 'btnRunDebtPayoff', 'Menghitung…');
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  FIRE PROJECTION (Financial Independence Retire Early)
+  // ════════════════════════════════════════════════════════════════
+  function openFireModal() {
+    // Pre-fill dari data dashboard kalau ada
+    const d = state.dashboard;
+    const monthlyExp = d ? Math.round((d.summary.totalExp || 0)) : 0;
+    const monthlySav = d ? Math.round((d.summary.totalSav || 0)) : 0;
+    const invest = d && d.netWorth ? d.netWorth.investmentAssets || 0 : 0;
+    $('fireMonthlyExp').value = monthlyExp ? monthlyExp.toLocaleString('id-ID') : '';
+    $('fireMonthlyContrib').value = monthlySav ? monthlySav.toLocaleString('id-ID') : '';
+    $('fireCurrent').value = invest ? invest.toLocaleString('id-ID') : '';
+    $('fireReturn').value = '7';
+    $('fireWithdrawal').value = '4';
+    $('fireResult').hidden = true;
+    setupCurrencyMasks();
+    openModal('fireModalOverlay');
+  }
+
+  async function runFireProjection() {
+    const data = {
+      monthlyExpense: parseRp($('fireMonthlyExp').value),
+      monthlyContribution: parseRp($('fireMonthlyContrib').value),
+      currentInvestment: parseRp($('fireCurrent').value),
+      returnRate: parseFloat($('fireReturn').value) || 7,
+      withdrawalRate: parseFloat($('fireWithdrawal').value) || 4
+    };
+    if (data.monthlyExpense <= 0) return showToast('Isi pengeluaran bulanan dulu', 'error');
+    await submitWithGuard(async () => {
+      const res = await api.calculateFireProjection(data);
+      if (!res.success) return showToast('Gagal: ' + res.error, 'error');
+      const result = $('fireResult');
+      result.hidden = false;
+      const reach = res.yearsToFire != null;
+      result.innerHTML = `
+        <div class="fire-summary">
+          <div><span>Target FIRE (${(data.withdrawalRate)}% rule):</span> <b>${fmtRp(res.fireNumber)}</b></div>
+          <div><span>Pengeluaran tahunan:</span> ${fmtRp(res.annualExpense)}</div>
+          ${reach
+            ? `<div class="fire-reach"><span>🎯 Tercapai dalam:</span> <b>${res.yearsToFire.toFixed(1)} tahun</b></div>`
+            : `<div class="fire-warn">⚠️ Butuh > 50 tahun. Tingkatkan kontribusi atau diversifikasi instrumen.</div>`}
+          ${res.coastYears ? `<div><span>Coast FIRE (kalau berhenti kontribusi sekarang):</span> <b>${res.coastYears.toFixed(1)} tahun</b></div>` : ''}
+        </div>
+        <div class="fire-summary-text">${escapeHtml(res.summary || '')}</div>
+        <div class="fire-tl-head">📈 Proyeksi modal per tahun</div>
+        <div class="fire-timeline">
+          ${(res.timeline || []).slice(0, 30).map(t => `
+            <div class="fire-tl-row">
+              <span>Tahun ${t.year}</span>
+              <div class="fire-tl-bar"><div class="fire-tl-fill" style="width:${Math.min(100, (t.capital / res.fireNumber * 100))}%"></div></div>
+              <span>${fmtRpShort(t.capital)}</span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }, 'btnRunFire', 'Menghitung…');
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  SPENDING DNA — clustering bulanan
+  // ════════════════════════════════════════════════════════════════
+  async function openSpendingDNA() {
+    openModal('dnaModalOverlay');
+    $('dnaResult').innerHTML = '<div class="muted">Menganalisis pola pengeluaran…</div>';
+    const res = await api.getSpendingDNA();
+    if (!res.success) {
+      $('dnaResult').innerHTML = `<div class="empty-state">${escapeHtml(res.error || 'Gagal analisis')}</div>`;
+      return;
+    }
+    const recentTxt = res.recentProfile ? escapeHtml(res.recentProfile) : '-';
+    const dominantTxt = res.dominantProfile ? escapeHtml(res.dominantProfile) : '-';
+    $('dnaResult').innerHTML = `
+      <div class="dna-overview">
+        <div><b>Profil bulan ini:</b> ${recentTxt}</div>
+        <div><b>Profil dominan:</b> ${dominantTxt}</div>
+        <div><b>Konsistensi:</b> ${res.consistency || 0}% bulan masuk profil dominan</div>
+        <div class="muted">${escapeHtml(res.summary || '')}</div>
+      </div>
+      <div class="dna-clusters-head">Cluster terdeteksi (${(res.clusters || []).length}):</div>
+      <div class="dna-clusters">
+        ${(res.clusters || []).map(c => `
+          <div class="dna-cluster">
+            <div class="dna-cluster-head">
+              <span class="dna-cluster-icon">${escapeHtml(c.icon || '📊')}</span>
+              <span class="dna-cluster-label">${escapeHtml(c.label || 'Profil')}</span>
+              <span class="dna-cluster-count">${c.monthCount} bulan · avg ${fmtRpShort(c.avgTotal)}</span>
+            </div>
+            <div class="dna-cluster-months">${(c.months || []).map(m => `<span class="dna-month-chip">${escapeHtml(m)}</span>`).join('')}</div>
+            <div class="dna-cluster-cats">
+              ${(c.topCategories || []).map(t => `<span>${escapeHtml(t.cat)} ${(t.pct * 100).toFixed(0)}%</span>`).join(' · ')}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  Wire new buttons in DOM
+  // ════════════════════════════════════════════════════════════════
+  function setupNewFeatureButtons() {
+    setupThemeToggle();
+    setupReceiptInput();
+
+    const wire = (id, fn) => { const el = $(id); if (el) el.addEventListener('click', fn); };
+
+    // Header buttons baru
+    wire('btnTransfer', openTransferModal);
+    wire('btnAuth', openAuthModal);
+    wire('btnWallets', openWalletsModal);
+
+    // Settings modal section: tombol ke fitur turunan
+    wire('settingsBtnAuth', () => { closeModal('settingsModalOverlay'); openAuthModal(); });
+    wire('settingsBtnWallets', () => { closeModal('settingsModalOverlay'); openWalletsModal(); });
+
+    // Wallet modal
+    wire('btnAddWallet', () => openWalletForm(null));
+    wire('btnSubmitWalletForm', submitWalletForm);
+
+    // Transfer modal
+    wire('btnSubmitTransfer', submitTransfer);
+
+    // Auth modal
+    wire('btnSaveAuthToken', saveAuthToken);
+    wire('btnRotateSecret', rotateAppSecret);
+
+    // Smart Goal AI
+    wire('btnSmartGoal', openSmartGoalModal);
+    wire('btnSubmitSmartGoal', submitSmartGoal);
+
+    // Receipt OCR
+    wire('btnReceiptOCR', openReceiptModal);
+
+    // Debt Payoff
+    wire('btnDebtPayoff', openDebtPayoffModal);
+    wire('btnRunDebtPayoff', runDebtPayoff);
+
+    // FIRE
+    wire('btnFire', openFireModal);
+    wire('btnRunFire', runFireProjection);
+
+    // Spending DNA
+    wire('btnSpendingDNA', openSpendingDNA);
+
+    // FAB items baru
+    document.querySelectorAll('#fabMenu .fab-item').forEach(it => {
+      const action = it.dataset.action;
+      if (action === 'transfer') {
+        it.addEventListener('click', () => {
+          const menu = $('fabMenu'), fab = $('fab');
+          menu.classList.remove('open'); menu.hidden = true; fab.classList.remove('open');
+          openTransferModal();
+        });
+      } else if (action === 'receipt') {
+        it.addEventListener('click', () => {
+          const menu = $('fabMenu'), fab = $('fab');
+          menu.classList.remove('open'); menu.hidden = true; fab.classList.remove('open');
+          openReceiptModal();
+        });
+      } else if (action === 'smart-goal') {
+        it.addEventListener('click', () => {
+          const menu = $('fabMenu'), fab = $('fab');
+          menu.classList.remove('open'); menu.hidden = true; fab.classList.remove('open');
+          openSmartGoalModal();
+        });
+      }
+    });
+  }
+
+  // Hook ke init() yang sudah ada lewat DOMContentLoaded — kita panggil
+  // setupNewFeatureButtons() segera setelah DOM ready (idempoten kalau dipanggil 2x).
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupNewFeatureButtons);
+  } else {
+    setupNewFeatureButtons();
+  }
+
 })();
+
