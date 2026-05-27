@@ -99,7 +99,7 @@ const CACHE_TTL_SECONDS = 60; // 1 menit (Apps Script max 21600s = 6 jam)
 
 function doGet(e) {
   return HtmlService.createHtmlOutputFromFile('index')
-    .setTitle('Money Tracker Pro')
+    .setTitle('Keuangan Zulfitrah')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
