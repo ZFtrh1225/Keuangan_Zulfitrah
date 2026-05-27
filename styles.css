@@ -68,6 +68,58 @@
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 }
 
+/* ──────────────── 1b. LIGHT THEME OVERRIDES ──────────────── */
+/* Activated via <html data-theme="light"> by store.applyTheme().
+   Pendekatan: hanya override variabel — komponen tidak perlu sadar tema. */
+html[data-theme="light"] {
+  --bg:        #f4f7fb;
+  --surface:   #ffffff;
+  --card:      #ffffff;
+  --card2:     #f8fafc;
+  --border:    rgba(15,23,42,0.10);
+  --border2:   rgba(15,23,42,0.18);
+
+  --accent:    #00b894;
+  --accent2:   #008f72;
+  --adim:      rgba(0,184,148,0.14);
+  --adim2:     rgba(0,184,148,0.07);
+
+  --green:     #16a34a;
+  --gdim:      rgba(22,163,74,0.14);
+  --red:       #dc2626;
+  --rdim:      rgba(220,38,38,0.12);
+  --amber:     #d97706;
+  --adm:       rgba(217,119,6,0.14);
+  --indigo:    #6366f1;
+  --idim:      rgba(99,102,241,0.14);
+  --blue:      #2563eb;
+  --bdim:      rgba(37,99,235,0.14);
+
+  /* Text contrast pada bg light (#f4f7fb) */
+  --t1:        #0f172a;
+  --t2:        #1e293b;
+  --t3:        #475569;
+  --t4:        #64748b;
+  --t5:        #94a3b8;
+
+  --shadow:    0 4px 20px rgba(15,23,42,0.10);
+  --shadow2:   0 2px 10px rgba(15,23,42,0.06);
+  --shadow-lg: 0 20px 50px rgba(15,23,42,0.18);
+}
+
+/* Inputs & selects di light mode butuh sedikit penyesuaian agar tidak
+   tampak gelap ditimpa default browser. */
+html[data-theme="light"] input,
+html[data-theme="light"] select,
+html[data-theme="light"] textarea {
+  background: #ffffff;
+  color: var(--t1);
+  border-color: var(--border2);
+}
+html[data-theme="light"] .modal { background: #ffffff; }
+html[data-theme="light"] .modal-overlay { background: rgba(15,23,42,0.45); }
+html[data-theme="light"] .skeleton { background: linear-gradient(90deg, #e2e8f0, #f1f5f9, #e2e8f0); }
+
 /* ──────────────── 2. RESET & BASE ──────────────── */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
@@ -1636,4 +1688,519 @@ select.form-input {
   .cb-row { grid-template-columns: 1fr; gap: 6px; }
   .streak-badge { padding: 3px 8px; font-size: 11px; }
   .streak-suffix { display: none; }
+}
+
+
+
+/* ════════════════════════════════════════════════════════════════
+   22. NEW COMPONENTS (v3 upgrade)
+       - Custom Dialog (MT.dialog)
+       - Smart Tools grid
+       - Wallets management list
+       - Auth/Token modal
+       - Smart Goal AI preview
+       - Receipt OCR result
+       - Debt Payoff result
+       - FIRE timeline
+       - Spending DNA clusters
+       - Settings shortcuts
+       - Theme toggle button
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── 22.1 Custom Dialog (MT.dialog.confirm/alert/prompt) ── */
+.mt-dialog-host {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  display: none;
+}
+.mt-dialog-host.open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: dialogFadeIn 0.15s ease-out;
+}
+.mt-dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(7, 10, 18, 0.78);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+.mt-dialog {
+  position: relative;
+  width: min(440px, 92vw);
+  background: var(--card);
+  border: 1px solid var(--border2);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 22px 22px 18px;
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  grid-template-rows: auto auto;
+  gap: 0 16px;
+  animation: dialogPop 0.18s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+.mt-dialog-icon {
+  grid-row: 1 / span 2;
+  font-size: 36px;
+  width: 56px; height: 56px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--adim);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.mt-dialog.type-danger .mt-dialog-icon { background: var(--rdim); }
+.mt-dialog.type-warn .mt-dialog-icon   { background: var(--adm); }
+.mt-dialog.type-success .mt-dialog-icon { background: var(--gdim); }
+
+.mt-dialog-body { grid-column: 2; }
+.mt-dialog-title {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--t1);
+  margin-bottom: 4px;
+}
+.mt-dialog-msg {
+  font-size: 13.5px;
+  color: var(--t2);
+  line-height: 1.55;
+  word-wrap: break-word;
+}
+.mt-dialog-input {
+  width: 100%;
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: var(--card2);
+  border: 1px solid var(--border2);
+  border-radius: var(--r-sm);
+  color: var(--t1);
+  font-size: 14px;
+  font-family: inherit;
+}
+.mt-dialog-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.mt-dialog-actions {
+  grid-column: 2;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+.mt-dialog-btn {
+  padding: 9px 18px;
+  border: 1px solid var(--border2);
+  border-radius: var(--r-sm);
+  background: var(--card2);
+  color: var(--t2);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.mt-dialog-btn:hover { background: var(--card); border-color: var(--t4); }
+.mt-dialog-btn-primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: #00251e;
+  border: none;
+}
+.mt-dialog-btn-primary:hover { filter: brightness(1.08); }
+.mt-dialog-btn-danger {
+  background: var(--red);
+  color: white;
+  border: none;
+}
+.mt-dialog-btn-danger:hover { filter: brightness(1.1); }
+
+@keyframes dialogFadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes dialogPop {
+  from { transform: scale(0.92); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
+/* ── 22.2 Smart Tools grid ── */
+.smart-tools-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.smart-tool-card {
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.18s;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: inherit;
+  color: var(--t1);
+}
+.smart-tool-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+}
+.smart-tool-icon { font-size: 28px; }
+.smart-tool-name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--t1);
+}
+.smart-tool-desc {
+  font-size: 12.5px;
+  color: var(--t3);
+  line-height: 1.45;
+}
+
+/* ── 22.3 Wallets management ── */
+.wallets-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.wallet-mgmt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--card2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+}
+.wallet-mgmt-name { font-weight: 600; color: var(--t1); }
+.wallet-mgmt-meta { font-size: 12px; color: var(--t4); margin-top: 2px; }
+.wallet-mgmt-bal { display: flex; align-items: center; gap: 10px; }
+.wallet-mgmt-cur {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 14px;
+}
+.wallet-mgmt-cur.positive { color: var(--green); }
+.wallet-mgmt-cur.negative { color: var(--red); }
+.wallet-mgmt-cur.zero { color: var(--t4); }
+.wallet-mgmt-actions { display: flex; gap: 4px; }
+
+/* ── 22.4 Auth modal ── */
+.auth-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.auth-status-badge.on  { background: var(--gdim); color: var(--green); }
+.auth-status-badge.off { background: var(--adm);  color: var(--amber); }
+.settings-section-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 18px 0 14px;
+}
+.settings-quick-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.settings-link {
+  display: flex !important;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px !important;
+  text-align: left;
+  width: 100%;
+  background: var(--card2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.settings-link:hover { border-color: var(--accent); }
+.settings-link-icon { font-size: 20px; }
+.settings-link-text { flex: 1; display: flex; flex-direction: column; }
+.settings-link-text b { color: var(--t1); font-size: 13.5px; }
+.settings-link-text span.muted { font-size: 11.5px; }
+.settings-link-arrow { color: var(--t4); font-size: 18px; }
+
+/* ── 22.5 Smart Goal AI preview ── */
+.smart-goal-preview {
+  margin-top: 16px;
+  padding: 14px;
+  background: var(--adim2);
+  border: 1px solid var(--adim);
+  border-radius: var(--r-sm);
+}
+.smart-goal-preview-row {
+  font-size: 13.5px;
+  margin-bottom: 6px;
+  color: var(--t2);
+}
+.smart-goal-preview-row b { color: var(--t1); }
+.smart-goal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.smart-goal-actions .btn-submit { flex: 1; min-width: 160px; }
+
+/* ── 22.6 Receipt OCR ── */
+.receipt-preview { margin: 12px 0; }
+.receipt-preview img {
+  max-width: 100%;
+  max-height: 280px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  margin: 0 auto;
+}
+.receipt-result {
+  margin-top: 12px;
+  padding: 14px;
+  background: var(--card2);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+}
+.receipt-result-head {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.receipt-row { font-size: 13px; margin: 4px 0; color: var(--t2); }
+.receipt-row b { color: var(--t1); }
+.receipt-items-head { margin-top: 10px; font-size: 12.5px; color: var(--t3); font-weight: 600; }
+.receipt-items {
+  list-style: none;
+  padding: 8px 0 0 0;
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--t2);
+  font-family: var(--font-mono);
+  line-height: 1.7;
+}
+.receipt-items li { padding-left: 8px; border-left: 2px solid var(--accent); margin-bottom: 4px; }
+
+/* ── 22.7 Debt Payoff result ── */
+.dp-result { margin-top: 14px; }
+.dp-summary {
+  background: var(--card2);
+  padding: 12px 14px;
+  border-radius: var(--r-sm);
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--t2);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dp-summary b { color: var(--t1); }
+.dp-strategies {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.dp-card {
+  padding: 14px;
+  background: var(--card2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+}
+.dp-card.recommended {
+  border-color: var(--accent);
+  background: var(--adim2);
+}
+.dp-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 14.5px;
+  margin-bottom: 4px;
+}
+.dp-meta { font-size: 11.5px; color: var(--t4); margin-bottom: 10px; }
+.dp-stat {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  padding: 4px 0;
+  color: var(--t2);
+  border-bottom: 1px dashed var(--border);
+}
+.dp-stat:last-of-type { border-bottom: none; }
+.dp-stat b { color: var(--t1); font-family: var(--font-mono); }
+.dp-order {
+  font-size: 11.5px;
+  color: var(--t3);
+  margin-top: 8px;
+  line-height: 1.5;
+}
+.dp-rec {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--adim);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+  color: var(--t1);
+}
+
+/* ── 22.8 FIRE timeline ── */
+.fire-result { margin-top: 14px; }
+.fire-summary {
+  background: var(--card2);
+  padding: 14px;
+  border-radius: var(--r-sm);
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--t2);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fire-summary b { color: var(--t1); font-family: var(--font-mono); }
+.fire-reach { color: var(--green); }
+.fire-warn  { color: var(--amber); }
+.fire-summary-text {
+  font-size: 13.5px;
+  padding: 10px 12px;
+  background: var(--adim);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-sm);
+  margin-bottom: 14px;
+}
+.fire-tl-head { font-weight: 700; margin-bottom: 8px; font-size: 13px; }
+.fire-timeline {
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--card2);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  padding: 8px;
+}
+.fire-tl-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 100px;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--t2);
+}
+.fire-tl-bar {
+  height: 8px;
+  background: var(--adim2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.fire-tl-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--green));
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+.fire-tl-row span:last-child {
+  text-align: right;
+  font-family: var(--font-mono);
+  color: var(--t1);
+  font-weight: 600;
+}
+
+/* ── 22.9 Spending DNA ── */
+.dna-result { display: flex; flex-direction: column; gap: 14px; }
+.dna-overview {
+  padding: 14px;
+  background: var(--card2);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  color: var(--t2);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dna-overview b { color: var(--t1); }
+.dna-clusters-head { font-weight: 700; font-size: 13.5px; }
+.dna-clusters { display: flex; flex-direction: column; gap: 10px; }
+.dna-cluster {
+  padding: 12px;
+  background: var(--card2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+}
+.dna-cluster-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.dna-cluster-icon { font-size: 22px; }
+.dna-cluster-label {
+  font-family: var(--font-display);
+  font-weight: 700;
+  flex: 1;
+  font-size: 14px;
+}
+.dna-cluster-count {
+  font-size: 11.5px;
+  color: var(--t4);
+  font-family: var(--font-mono);
+}
+.dna-cluster-months {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px 0;
+}
+.dna-month-chip {
+  background: var(--adim2);
+  color: var(--accent);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+.dna-cluster-cats {
+  font-size: 11.5px;
+  color: var(--t3);
+  line-height: 1.5;
+}
+
+/* ── 22.10 Theme toggle button ── */
+#btnTheme {
+  font-size: 16px;
+  width: 38px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── 22.11 FAB items baru ── */
+.fab-item.transfer  { background: var(--bdim);  color: var(--blue); }
+.fab-item.receipt   { background: var(--idim);  color: var(--indigo); }
+.fab-item.smart-goal { background: var(--adm);  color: var(--amber); }
+
+/* ── 22.12 Responsive — Smart Tools & Debt Payoff stack di mobile ── */
+@media (max-width: 700px) {
+  .dp-strategies { grid-template-columns: 1fr; }
+  .smart-tools-grid { grid-template-columns: 1fr 1fr; }
+  .fire-tl-row { grid-template-columns: 60px 1fr 80px; }
+}
+@media (max-width: 480px) {
+  .smart-tools-grid { grid-template-columns: 1fr; }
+  .mt-dialog {
+    grid-template-columns: 44px 1fr;
+    padding: 18px 16px 14px;
+  }
+  .mt-dialog-icon { width: 44px; height: 44px; font-size: 28px; }
+  .mt-dialog-actions { flex-direction: column-reverse; }
+  .mt-dialog-actions button { width: 100%; }
 }
