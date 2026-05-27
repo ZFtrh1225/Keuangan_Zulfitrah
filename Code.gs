@@ -17,8 +17,13 @@ const SHEET_NAMES = {
   SAVING: 'Savings',
   ASSET: 'Assets',
   DEBT: 'Debts',
-  GOAL: 'Goals'
+  GOAL: 'Goals',
+  TEMPLATE: 'Templates',
+  BILL: 'Bills'
 };
+
+// Milestone hari berturut-turut (streak) untuk badge motivasi
+const STREAK_BADGES = [7, 14, 30, 60, 90, 180, 365];
 
 /**
  * SINGLE SOURCE OF TRUTH untuk seluruh daftar kategori pengeluaran.
@@ -47,6 +52,8 @@ const CATEGORIES = [
     subcategories: ['SPP/UKT/Uang Kuliah', 'Buku & Jurnal Kuliah', 'Kursus/Sertifikasi', 'Alat Tulis/Software', 'Pelatihan/Workshop', 'Lainnya'] },
   { name: 'Keluarga & Tanggungan', type: 'needs', icon: '👨‍👩‍👧',
     subcategories: ['Uang Orang Tua', 'Kebutuhan Adik/Anak', 'Asisten Rumah Tangga', 'Lainnya'] },
+  { name: 'Kantor', type: 'needs', icon: '🏢',
+    subcategories: ['Rokok', 'Makanan/Minuman', 'Lainnya'] },
 
   // ── WANTS (Keinginan) ──
   { name: 'Makan di Luar & Jajanan', type: 'wants', icon: '🍔',
@@ -122,6 +129,8 @@ function handleAction_(e) {
       case 'listGoals':              return listGoals();
       case 'getSettings':            return getSettings();
       case 'getCategories':          return getCategories();
+      case 'listTemplates':          return listTemplates();
+      case 'listBills':              return listBills(data.month, data.year);
       // ── Create ──
       case 'addIncome':              return addIncome(data);
       case 'addExpense':              return addExpense(data);
@@ -130,6 +139,8 @@ function handleAction_(e) {
       case 'addDebt':                return addDebt(data);
       case 'addGoal':                return addGoal(data);
       case 'addGoalDeposit':         return addGoalDeposit(data);
+      case 'addTemplate':            return addTemplate(data);
+      case 'addBill':                return addBill(data);
       // ── Update ──
       case 'editTransaction':        return editTransaction(data);
       case 'updateGoal':             return updateGoal(data);
@@ -138,6 +149,8 @@ function handleAction_(e) {
       case 'deleteTransaction':      return deleteTransaction(data.sheet, data.rowIndex);
       case 'deleteWealthItem':       return deleteWealthItem(data.type, data.rowIndex);
       case 'deleteGoal':             return deleteGoal(data.rowIndex);
+      case 'deleteTemplate':         return deleteTemplate(data.rowIndex);
+      case 'deleteBill':             return deleteBill(data.rowIndex);
       // ── Special ──
       case 'generatePDFReport':      return generatePDFReport(data.month, data.year);
       case 'getGeminiDeepAnalysis':  return getGeminiDeepAnalysis(data);
@@ -161,7 +174,13 @@ function initSheets_() {
     { name: SHEET_NAMES.SAVING,  headers: ['Date', 'Type', 'Amount', 'Notes', 'Source'] },
     { name: SHEET_NAMES.ASSET,   headers: ['Date', 'Type', 'Name', 'Value', 'Institution'] },
     { name: SHEET_NAMES.DEBT,    headers: ['Date', 'Type', 'Name', 'Value', 'Institution'] },
-    { name: SHEET_NAMES.GOAL,    headers: ['Date', 'Name', 'Target', 'Saved', 'Deadline', 'Category', 'Notes'] }
+    { name: SHEET_NAMES.GOAL,    headers: ['Date', 'Name', 'Target', 'Saved', 'Deadline', 'Category', 'Notes'] },
+    // Template transaksi cepat — user simpan transaksi yg sering muncul
+    // Kind: 'income' | 'expense' | 'saving'. Untuk expense, pakai Category+Subcategory.
+    // Untuk income/saving, pakai TypeText (di kolom Category) — Subcategory kosong.
+    { name: SHEET_NAMES.TEMPLATE, headers: ['Name', 'Kind', 'Category', 'Subcategory', 'Amount', 'Source', 'Notes', 'CreatedAt'] },
+    // Tagihan/cicilan manual non-recurring (PBB, premi tahunan, dll)
+    { name: SHEET_NAMES.BILL,    headers: ['DueDate', 'Name', 'Amount', 'Notes', 'CreatedAt'] }
   ];
   cfg.forEach(c => {
     let sh = ss.getSheetByName(c.name);
@@ -387,6 +406,165 @@ function addGoalDeposit(data) {
 }
 
 // ════════════════════════════════════════════════════════════════════
+//  CRUD — Templates (Quick Templates Transaksi Cepat)
+// ════════════════════════════════════════════════════════════════════
+
+/**
+ * Daftar template transaksi cepat.
+ * Auto-suggest tambahan: kalau sheet Templates kosong, ambil 3 transaksi
+ * pengeluaran paling sering muncul (sub+notes) dari Expenses sebagai
+ * suggestion non-persisted (rowIndex=null) supaya user bisa simpan langsung.
+ */
+function listTemplates() {
+  initSheets_();
+  const rows = getSheetData_(SHEET_NAMES.TEMPLATE);
+  const items = rows.map((r, i) => ({
+    rowIndex: i + 2,
+    name: r[0] || '',
+    kind: r[1] || 'expense',
+    category: r[2] || '',
+    subcategory: r[3] || '',
+    amount: parseFloat(r[4]) || 0,
+    source: r[5] || '',
+    notes: r[6] || '',
+    isSuggestion: false
+  })).filter(t => t.name);
+
+  // Auto-suggest dari pola pengeluaran sering jika user belum punya template
+  let suggestions = [];
+  if (items.length < 3) {
+    const exp = getSheetData_(SHEET_NAMES.EXPENSE);
+    const freq = {};
+    exp.forEach(r => {
+      const sub = r[2] || r[1] || '';
+      const note = r[4] ? String(r[4]).trim() : '';
+      const src = r[5] || 'Cash';
+      const amt = parseFloat(r[3]) || 0;
+      if (!sub || amt <= 0) return;
+      const key = (sub + '|' + note + '|' + src).toLowerCase();
+      if (!freq[key]) {
+        freq[key] = {
+          count: 0, totalAmt: 0,
+          name: (note || sub),
+          category: r[1] || '',
+          subcategory: sub,
+          source: src,
+          notes: note
+        };
+      }
+      freq[key].count++;
+      freq[key].totalAmt += amt;
+    });
+    suggestions = Object.values(freq)
+      .filter(g => g.count >= 2)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5)
+      .map(g => ({
+        rowIndex: null,
+        name: g.name,
+        kind: 'expense',
+        category: g.category,
+        subcategory: g.subcategory,
+        amount: Math.round(g.totalAmt / g.count),
+        source: g.source,
+        notes: g.notes,
+        isSuggestion: true,
+        usageCount: g.count
+      }));
+  }
+
+  return { success: true, templates: items, suggestions: suggestions };
+}
+
+function addTemplate(data) {
+  initSheets_();
+  const name = String(data.name || '').trim();
+  if (!name) return { success: false, error: 'Nama template wajib diisi.' };
+  const kind = ['income', 'expense', 'saving'].indexOf(String(data.kind || '').toLowerCase()) !== -1
+    ? String(data.kind).toLowerCase() : 'expense';
+  SpreadsheetApp.getActiveSpreadsheet()
+    .getSheetByName(SHEET_NAMES.TEMPLATE)
+    .appendRow([
+      name,
+      kind,
+      data.category || '',
+      data.subcategory || '',
+      Number(data.amount) || 0,
+      data.source || '',
+      data.notes || '',
+      new Date()
+    ]);
+  return { success: true, msg: 'Template "' + name + '" tersimpan ⚡' };
+}
+
+function deleteTemplate(rowIndex) {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.TEMPLATE);
+  if (!sh) throw new Error('Sheet Templates tidak ditemukan');
+  const row = parseInt(rowIndex, 10);
+  if (!row || row < 2) throw new Error('Index baris tidak valid');
+  sh.deleteRow(row);
+  return { success: true, msg: 'Template dihapus 🗑️' };
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  CRUD — Manual Bills (tagihan non-recurring untuk Bill Calendar)
+// ════════════════════════════════════════════════════════════════════
+
+/**
+ * Daftar tagihan manual untuk bulan tertentu (atau seluruhnya kalau month=0).
+ */
+function listBills(month, year) {
+  initSheets_();
+  const rows = getSheetDataWithRowIndex_(SHEET_NAMES.BILL);
+  let items = rows.map(({ row, rowIndex }) => ({
+    rowIndex: rowIndex,
+    dueDate: toIso_(row[0]),
+    name: row[1] || '',
+    amount: parseFloat(row[2]) || 0,
+    notes: row[3] || ''
+  })).filter(b => b.dueDate && b.name);
+
+  if (month && year) {
+    const m = parseInt(month, 10), y = parseInt(year, 10);
+    items = items.filter(b => {
+      const d = new Date(b.dueDate);
+      return !isNaN(d) && d.getFullYear() === y && (d.getMonth() + 1) === m;
+    });
+  }
+
+  items.sort((a, b) => a.dueDate < b.dueDate ? -1 : 1);
+  return { success: true, bills: items };
+}
+
+function addBill(data) {
+  initSheets_();
+  const name = String(data.name || '').trim();
+  const date = data.dueDate || data.date;
+  if (!name || !date) return { success: false, error: 'Nama & tanggal jatuh tempo wajib diisi.' };
+  SpreadsheetApp.getActiveSpreadsheet()
+    .getSheetByName(SHEET_NAMES.BILL)
+    .appendRow([
+      date,
+      name,
+      Number(data.amount) || 0,
+      data.notes || '',
+      new Date()
+    ]);
+  invalidateCache_();
+  return { success: true, msg: 'Tagihan "' + name + '" ditambahkan 📅' };
+}
+
+function deleteBill(rowIndex) {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.BILL);
+  if (!sh) throw new Error('Sheet Bills tidak ditemukan');
+  const row = parseInt(rowIndex, 10);
+  if (!row || row < 2) throw new Error('Index baris tidak valid');
+  sh.deleteRow(row);
+  invalidateCache_();
+  return { success: true, msg: 'Tagihan dihapus 🗑️' };
+}
+
+// ════════════════════════════════════════════════════════════════════
 //  Categories endpoint (single source of truth)
 // ════════════════════════════════════════════════════════════════════
 
@@ -412,12 +590,18 @@ function getCategories() {
 
 function getSettings() {
   const props = PropertiesService.getDocumentProperties();
+  // categoryBudgets = { "Makan di Luar & Jajanan": 600000, "Hiburan & Streaming": 200000, ... }
+  let catBudgets = {};
+  try {
+    catBudgets = JSON.parse(props.getProperty('categoryBudgets') || '{}') || {};
+  } catch (e) { catBudgets = {}; }
   return {
     success: true,
     settings: {
       budgetRule: props.getProperty('budgetRule') || '50/30/20',
       customBudget: JSON.parse(props.getProperty('customBudget') || '{"needs":50,"wants":30,"invest":20}'),
-      monthlyEmergencyTarget: parseFloat(props.getProperty('monthlyEmergencyTarget')) || 6
+      monthlyEmergencyTarget: parseFloat(props.getProperty('monthlyEmergencyTarget')) || 6,
+      categoryBudgets: catBudgets
     }
   };
 }
@@ -427,6 +611,16 @@ function saveSettings(data) {
   if (data.budgetRule) props.setProperty('budgetRule', data.budgetRule);
   if (data.customBudget) props.setProperty('customBudget', JSON.stringify(data.customBudget));
   if (data.monthlyEmergencyTarget != null) props.setProperty('monthlyEmergencyTarget', String(data.monthlyEmergencyTarget));
+  if (data.categoryBudgets && typeof data.categoryBudgets === 'object') {
+    // Sanitize: hanya simpan number > 0; kategori dengan nilai 0/null dihapus
+    const clean = {};
+    Object.keys(data.categoryBudgets).forEach(k => {
+      const v = Number(data.categoryBudgets[k]);
+      if (v > 0) clean[k] = v;
+    });
+    props.setProperty('categoryBudgets', JSON.stringify(clean));
+  }
+  invalidateCache_();
   return { success: true, msg: 'Preferensi tersimpan ⚙️' };
 }
 
@@ -440,6 +634,86 @@ function getActiveBudgetSplit_() {
     return { needs: 0.7, wants: 0.2, invest: 0.1, label: '70/20/10' };
   }
   return { needs: 0.5, wants: 0.3, invest: 0.2, label: '50/30/20' };
+}
+
+/**
+ * Ambil plafon per-kategori dari DocumentProperties.
+ * Returns: { 'Hiburan & Streaming': 200000, 'Makan di Luar & Jajanan': 600000, ... }
+ */
+function getCategoryBudgets_() {
+  try {
+    const props = PropertiesService.getDocumentProperties();
+    return JSON.parse(props.getProperty('categoryBudgets') || '{}') || {};
+  } catch (e) { return {}; }
+}
+
+/**
+ * Hitung streak hari berturut-turut user mencatat ≥1 transaksi (income/expense/saving).
+ * Returns: { current, longest, lastActivity, milestone }.
+ *   current   = jumlah hari berturut-turut sampai HARI INI atau KEMARIN.
+ *               Kalau hari ini & kemarin sama-sama tidak ada catatan → 0.
+ *   longest   = streak terpanjang yang pernah dicatat.
+ *   milestone = badge tertinggi yang sudah dicapai current streak (7/14/30/...).
+ */
+function computeStreak_(allInc, allExp, allSav) {
+  const dayKey = (d) => Utilities.formatDate(new Date(d), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const set = {};
+  [allInc, allExp, allSav].forEach(rows => {
+    rows.forEach(r => {
+      if (!r[0]) return;
+      const d = new Date(r[0]);
+      if (isNaN(d)) return;
+      set[dayKey(d)] = true;
+    });
+  });
+  const days = Object.keys(set).sort(); // ascending
+  if (!days.length) {
+    return { current: 0, longest: 0, lastActivity: '', milestone: 0 };
+  }
+
+  // Hitung longest streak overall
+  let longest = 1, run = 1;
+  for (let i = 1; i < days.length; i++) {
+    const prev = new Date(days[i - 1]);
+    const cur = new Date(days[i]);
+    const diff = Math.round((cur - prev) / 86400000);
+    if (diff === 1) { run++; longest = Math.max(longest, run); }
+    else { run = 1; }
+  }
+
+  // Hitung current streak — terhitung kalau aktivitas terakhir == hari ini atau kemarin
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const lastDate = new Date(days[days.length - 1]);
+  lastDate.setHours(0, 0, 0, 0);
+  const gap = Math.round((today - lastDate) / 86400000);
+
+  let current = 0;
+  if (gap <= 1) {
+    // walk back dari last day selama selisih == 1
+    current = 1;
+    for (let i = days.length - 2; i >= 0; i--) {
+      const a = new Date(days[i]);
+      const b = new Date(days[i + 1]);
+      const d = Math.round((b - a) / 86400000);
+      if (d === 1) current++;
+      else break;
+    }
+  }
+
+  // Tentukan badge milestone tertinggi yang sudah dicapai
+  let milestone = 0;
+  for (let i = 0; i < STREAK_BADGES.length; i++) {
+    if (current >= STREAK_BADGES[i]) milestone = STREAK_BADGES[i];
+  }
+
+  return {
+    current: current,
+    longest: longest,
+    lastActivity: days[days.length - 1],
+    milestone: milestone,
+    nextMilestone: STREAK_BADGES.find(m => m > current) || null
+  };
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -780,6 +1054,77 @@ function getDashboardData(month, year) {
   const subscriptions = detectSubscriptions_(allExp);
   const upcomingBills = subscriptions.filter(s => s.daysLeft != null && s.daysLeft <= 7 && !s.paidThisMonth);
 
+  // ── Manual Bills (sheet Bills) untuk bulan ini ──
+  const allManualBills = getSheetDataWithRowIndex_(SHEET_NAMES.BILL);
+  const manualBillsThisMonth = allManualBills.map(({ row, rowIndex }) => ({
+    rowIndex: rowIndex,
+    dueDate: toIso_(row[0]),
+    name: row[1] || '',
+    amount: parseFloat(row[2]) || 0,
+    notes: row[3] || ''
+  })).filter(b => {
+    if (!b.dueDate) return false;
+    const d = new Date(b.dueDate);
+    return !isNaN(d) && d.getFullYear() === year && (d.getMonth() + 1) === month;
+  });
+
+  // ── Bill Calendar bulan ini ──
+  // Kombinasi: subscription (nextDate dlm bulan ini) + manual bills + tagihan rutin (DSR bulan ini)
+  const calendarDays = new Array(days).fill(null).map((_, i) => ({ day: i + 1, items: [], total: 0 }));
+  // a. Subscriptions yang prediksi nextDate-nya jatuh di bulan/tahun yg sedang dibuka
+  subscriptions.forEach(s => {
+    if (!s.nextDate) return;
+    const dt = new Date(s.nextDate);
+    if (isNaN(dt) || dt.getFullYear() !== year || (dt.getMonth() + 1) !== month) return;
+    const di = dt.getDate() - 1;
+    if (di < 0 || di >= days) return;
+    calendarDays[di].items.push({
+      type: 'subscription',
+      name: s.name,
+      amount: s.avgAmount || s.lastAmount || 0,
+      paid: !!s.paidThisMonth
+    });
+  });
+  // b. Manual bills bulan ini
+  manualBillsThisMonth.forEach(b => {
+    const dt = new Date(b.dueDate);
+    const di = dt.getDate() - 1;
+    if (di < 0 || di >= days) return;
+    calendarDays[di].items.push({
+      type: 'manual',
+      rowIndex: b.rowIndex,
+      name: b.name,
+      amount: b.amount,
+      notes: b.notes
+    });
+  });
+  // Hitung total per hari
+  calendarDays.forEach(d => {
+    d.total = d.items.reduce((s, x) => s + (x.amount || 0), 0);
+  });
+  // Total komitmen tersisa = sum bills dari hari ini sampai akhir bulan (yang belum 'paid')
+  const todayD = new Date();
+  const isCurMonth = (todayD.getFullYear() === year && (todayD.getMonth() + 1) === month);
+  const startDay = isCurMonth ? todayD.getDate() : 1;
+  let remainingCommitment = 0;
+  let remainingCount = 0;
+  for (let d = startDay; d <= days; d++) {
+    calendarDays[d - 1].items.forEach(it => {
+      if (!it.paid) {
+        remainingCommitment += (it.amount || 0);
+        remainingCount++;
+      }
+    });
+  }
+  const calendar = {
+    month: month,
+    year: year,
+    days: calendarDays,
+    remainingCommitment: remainingCommitment,
+    remainingCount: remainingCount,
+    daysLeftInMonth: isCurMonth ? Math.max(0, days - todayD.getDate() + 1) : days
+  };
+
   // ── Burn Rate & Runway (pakai liquid) ──
   const today = new Date();
   const dayOfMonth = today.getDate();
@@ -793,6 +1138,29 @@ function getDashboardData(month, year) {
   }
 
   // ── Insights ──
+  // Plafon kategori (envelope budgeting) — basis utk progress bar & insight
+  const catBudgets = getCategoryBudgets_();
+  const categoryBudgets = Object.keys(catBudgets).map(name => {
+    const budget = Number(catBudgets[name]) || 0;
+    const spent = catMap[name] || 0;
+    const pct = budget > 0 ? (spent / budget * 100) : 0;
+    let status = 'safe';
+    if (pct >= 100) status = 'over';
+    else if (pct >= 90) status = 'danger';
+    else if (pct >= 70) status = 'warn';
+    return {
+      name: name,
+      budget: budget,
+      spent: spent,
+      remaining: Math.max(0, budget - spent),
+      pct: pct,
+      status: status
+    };
+  }).sort((a, b) => b.pct - a.pct);
+
+  // ── Streak (dihitung dari semua transaksi sepanjang waktu) ──
+  const streak = computeStreak_(allInc, allExp, allSav);
+
   const insights = buildInsights_({
     totalInc, totalExp, totalSav, balance, savingsRate,
     pTotalInc, pTotalExp, pBalance,
@@ -800,7 +1168,8 @@ function getDashboardData(month, year) {
     liquidAssets, investmentAssets, totalAssets, totalDebts, netWorth,
     dsr, emergencyFundRatio, runwayDays,
     forecastMonths,
-    subscriptions
+    subscriptions,
+    categoryBudgets
   });
 
   const result = {
@@ -842,6 +1211,10 @@ function getDashboardData(month, year) {
     walletBalances,
     upcomingBills,
     subscriptions,
+    manualBills: manualBillsThisMonth,
+    calendar: calendar,
+    categoryBudgets: categoryBudgets,
+    streak: streak,
     burn: {
       dailyExpense: burnRate,
       dailyIncome: dailyIncome,
@@ -1100,6 +1473,21 @@ function buildInsights_(d) {
       text: `Total estimasi ${fmt(total)}/bulan untuk langganan rutin. Audit yang sudah jarang dipakai.` });
   }
 
+  // 9b. Envelope Budgeting — kategori melewati plafon
+  if (d.categoryBudgets && d.categoryBudgets.length) {
+    const over = d.categoryBudgets.filter(c => c.status === 'over');
+    const danger = d.categoryBudgets.filter(c => c.status === 'danger');
+    if (over.length) {
+      const top = over[0];
+      out.push({ type: 'danger', icon: '🚫', title: `Plafon "${top.name}" Terlampaui`,
+        text: `Sudah ${top.pct.toFixed(0)}% dari plafon (${fmt(top.spent)}/${fmt(top.budget)})${over.length > 1 ? ` — dan ${over.length - 1} kategori lain juga over.` : '.'} Hentikan pengeluaran kategori ini sampai akhir bulan.` });
+    } else if (danger.length) {
+      const top = danger[0];
+      out.push({ type: 'warning', icon: '⚠️', title: `Hampir Habis: "${top.name}"`,
+        text: `Sudah ${top.pct.toFixed(0)}% plafon (${fmt(top.spent)}/${fmt(top.budget)}). Sisa ${fmt(top.remaining)} — hati-hati pengeluaran berikutnya.` });
+    }
+  }
+
   // 10. 50/30/20
   if (d.totalInc > 0) {
     const wp = d.wants / d.totalInc * 100;
@@ -1268,6 +1656,12 @@ ${topExpenseLines}
   • Kategori naik tajam dari bulan lalu: ${v(d.biggestMoMRise, 'tidak ada kenaikan signifikan')}
   • Total langganan rutin terdeteksi: ${v(d.subsTotal, 'Rp 0')}/bulan (${v(d.subsCount, '0')} langganan)
   • Dompet bermasalah (saldo negatif): ${v(d.negativeWallets, 'tidak ada')}
+
+PLAFON KATEGORI (Envelope Budgeting)
+${v(d.categoryBudgetsBlock, '  (Belum ada plafon kategori yang diatur)')}
+
+KONSISTENSI PENCATATAN
+  • Streak hari berturut-turut: ${v(d.streakCurrent, '0')} hari (terpanjang: ${v(d.streakLongest, '0')} hari)
 
 TUJUAN KEUANGAN AKTIF
 ${goalsBlock}

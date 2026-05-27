@@ -43,6 +43,11 @@
     <div class="logo">
       <span class="logo-icon" aria-hidden="true">💎</span>
       <span>Keuangan Zulfitrah</span>
+      <button id="streakBadge" class="streak-badge" hidden title="Streak hari berturut-turut" aria-label="Streak pencatatan">
+        <span class="streak-emoji" aria-hidden="true">🔥</span>
+        <span class="streak-num">0</span>
+        <span class="streak-suffix">hari</span>
+      </button>
     </div>
     <div class="header-right">
       <select id="monthSel" aria-label="Pilih bulan"></select>
@@ -413,6 +418,59 @@
       </div>
     </section>
 
+    <!-- ═══════════════ Bill Calendar ═══════════════ -->
+    <section class="fadeUp">
+      <div class="section-title">
+        <span>📅 Kalender Tagihan Bulan Ini</span>
+        <button class="btn-pill" id="btnAddBill" aria-label="Tambah tagihan manual">+ Tagihan Manual</button>
+      </div>
+      <div class="card calendar-card">
+        <div class="calendar-summary" id="calendarSummary">
+          <div class="cal-stat">
+            <div class="cal-stat-lbl">Komitmen Tersisa</div>
+            <div class="cal-stat-val" id="calRemaining">Rp 0</div>
+          </div>
+          <div class="cal-stat">
+            <div class="cal-stat-lbl">Jumlah Tagihan</div>
+            <div class="cal-stat-val" id="calRemainingCount">0</div>
+          </div>
+          <div class="cal-stat">
+            <div class="cal-stat-lbl">Sisa Hari Bulan Ini</div>
+            <div class="cal-stat-val" id="calDaysLeft">0</div>
+          </div>
+        </div>
+        <div class="calendar-weekdays">
+          <span>Min</span><span>Sen</span><span>Sel</span><span>Rab</span><span>Kam</span><span>Jum</span><span>Sab</span>
+        </div>
+        <div class="calendar-grid" id="calendarGrid">
+          <div class="empty-state">Memuat kalender…</div>
+        </div>
+        <div class="calendar-detail" id="calendarDetail" hidden>
+          <div class="cal-detail-head">
+            <span id="calDetailDate">—</span>
+            <button class="icon-btn" id="btnCloseCalDetail" aria-label="Tutup">✕</button>
+          </div>
+          <div id="calDetailItems"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════ Plafon Kategori (Envelope Budget) ═══════════════ -->
+    <section class="fadeUp">
+      <div class="section-title">
+        <span>📦 Plafon Kategori <span class="term-en">(Envelope Budgeting)</span></span>
+        <button class="btn-pill" id="btnEditCatBudgets" aria-label="Atur plafon kategori">⚙️ Atur Plafon</button>
+      </div>
+      <div class="card">
+        <div id="catBudgetList">
+          <div class="empty-state">
+            <div class="empty-state-icon">📦</div>
+            Belum ada plafon kategori. Klik <b>Atur Plafon</b> untuk set limit per kategori (mis. Hiburan Rp 200rb/bulan).
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ═══════════════ Recent Transactions ═══════════════ -->
     <section class="fadeUp">
       <div class="section-title">
@@ -539,6 +597,17 @@
 
         <!-- Expense tab -->
         <div class="tab-content" id="tab-expense" role="tabpanel">
+          <!-- Quick Templates chip row -->
+          <div id="templateChipsWrap" class="template-chips-wrap">
+            <div class="template-chips-head">
+              <span class="micro-label" style="margin:0;">⚡ Template Cepat</span>
+              <button type="button" class="btn-pill" id="btnSaveTemplate" title="Simpan transaksi ini sebagai template">💾 Simpan Template</button>
+            </div>
+            <div id="templateChips" class="template-chips">
+              <div class="template-chip-empty muted">Belum ada template — isi form lalu klik <b>Simpan Template</b> untuk pakai sekali klik nanti.</div>
+            </div>
+          </div>
+
           <div class="form-row">
             <div class="form-group">
               <label class="form-label" for="expCat">Kategori *</label>
@@ -846,6 +915,70 @@
           <div class="muted micro-label" id="customBudgetSum">Total: 100%</div>
         </div>
         <button class="btn-submit" id="btnSubmitSettings">Simpan Pengaturan 💾</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ MODAL: Category Budgets (Envelope) ═══════════════ -->
+  <div class="modal-overlay" id="catBudgetModalOverlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="catBudgetModalTitle">
+      <div class="modal-header">
+        <div class="modal-top">
+          <div class="modal-heading" id="catBudgetModalTitle">📦 Atur Plafon Kategori</div>
+          <button class="modal-close" data-close="catBudgetModalOverlay" aria-label="Tutup">×</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="muted micro-label" style="margin-bottom:14px;">
+          💡 Set limit pengeluaran per kategori per bulan. Kosongkan / 0 untuk hapus plafon. Progress bar muncul di dashboard.
+        </div>
+        <div id="catBudgetForm" class="cat-budget-form">
+          <div class="empty-state">Memuat kategori…</div>
+        </div>
+        <button class="btn-submit" id="btnSubmitCatBudgets">Simpan Plafon 📦</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ MODAL: Add Manual Bill ═══════════════ -->
+  <div class="modal-overlay" id="billModalOverlay">
+    <div class="modal modal-narrow" role="dialog" aria-modal="true" aria-labelledby="billModalTitle">
+      <div class="modal-header">
+        <div class="modal-top">
+          <div class="modal-heading" id="billModalTitle">📅 Tambah Tagihan Manual</div>
+          <button class="modal-close" data-close="billModalOverlay" aria-label="Tutup">×</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="muted micro-label" style="margin-bottom:14px;">
+          Untuk tagihan non-recurring (PBB tahunan, premi asuransi, dll). Akan muncul di kalender bulan jatuh tempo.
+        </div>
+        <div class="form-row single mb-14">
+          <div class="form-group">
+            <label class="form-label" for="billName">Nama Tagihan *</label>
+            <input type="text" class="form-input" id="billName" placeholder="Contoh: PBB 2026" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="billDate">Jatuh Tempo *</label>
+            <input type="date" class="form-input" id="billDate" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="billAmount">Jumlah (Rp)</label>
+            <div class="amount-input-wrap">
+              <span class="amount-prefix">Rp</span>
+              <input type="text" inputmode="numeric" class="form-input currency-mask" id="billAmount" placeholder="0" />
+            </div>
+          </div>
+        </div>
+        <div class="form-row single mb-14">
+          <div class="form-group">
+            <label class="form-label" for="billNotes">Catatan</label>
+            <input type="text" class="form-input" id="billNotes" placeholder="Opsional…" />
+          </div>
+        </div>
+        <button class="btn-submit" id="btnSubmitBill">Simpan Tagihan 📅</button>
       </div>
     </div>
   </div>
