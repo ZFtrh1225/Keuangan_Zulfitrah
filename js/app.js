@@ -2515,7 +2515,22 @@
     $('receiptPreview').innerHTML = '';
     $('receiptResult').hidden = true;
     openModal('receiptModalOverlay');
+  }
 
+  function setupReceiptInput() {
+    const fileEl = $('receiptFile');
+    if (!fileEl) return;
+    fileEl.addEventListener('change', async () => {
+      const file = fileEl.files && fileEl.files[0];
+      if (!file) return;
+      if (!/^image\//.test(file.type)) {
+        showToast('Pilih file gambar (jpg/png)', 'error');
+        return;
+      }
+      // Resize ke max 1280px untuk hemat bandwidth ke Gemini
+      const dataUrl = await resizeImage(file, 1280, 0.85);
+      $('receiptPreview').innerHTML = `<img src="${dataUrl}" alt="Preview struk" />`;
+      const base64 = dataUrl.split(',')[1] || '';
       $('receiptResult').hidden = true;
       await submitWithGuard(async () => {
         const res = await api.extractReceiptData(base64, 'image/jpeg');
