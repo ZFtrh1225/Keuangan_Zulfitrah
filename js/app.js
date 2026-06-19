@@ -537,13 +537,41 @@
   // ── Summary ──
   function renderSummary(s) {
     if (!s) return;
-    const setCmp = (id, val, prev, inverted) => {
+
+    // Mode 1: rasio % normal — valid karena baseline-nya (income/expense/tx)
+    // secara struktur selalu >= 0.
+    const setCmpRatio = (id, val, prev, inverted) => {
       const el = $(id);
       const p = prev > 0 ? (val - prev) / prev * 100 : (val > 0 ? 100 : 0);
       const isUp = p > 0;
       const isGood = inverted ? !isUp : isUp;
       el.className = 'sc-compare ' + (Math.abs(p) < 0.5 ? 'flat' : isGood ? 'up' : 'down');
       el.textContent = (Math.abs(p) < 0.5 ? '— ' : isUp ? '▲ ' : '▼ ') + Math.abs(p).toFixed(1) + '%';
+    };
+
+    // Mode 2: selisih poin-persen — untuk metrik yang SUDAH berbentuk %
+    // (savings rate) dan bisa negatif di bulan boncos. "% dari %" lama
+    // (mis. dari -10% ke +5% = "100%") tidak bermakna; poin persen lebih jujur.
+    const setCmpPoint = (id, val, prev, inverted) => {
+      const el = $(id);
+      const d = val - prev;
+      const isUp = d > 0;
+      const isGood = inverted ? !isUp : isUp;
+      el.className = 'sc-compare ' + (Math.abs(d) < 0.5 ? 'flat' : isGood ? 'up' : 'down');
+      el.textContent = (Math.abs(d) < 0.5 ? '— ' : isUp ? '▲ ' : '▼ ') + Math.abs(d).toFixed(1) + 'pp';
+    };
+
+    // Mode 3: selisih nominal Rupiah — untuk saldo, yang baseline-nya bisa
+    // 0 atau minus (mis. bulan lalu defisit, bulan ini surplus). Persentase
+    // dari baseline 0/negatif secara matematis tidak terdefinisi dengan baik,
+    // jadi tampilkan selisih nominal absolut saja, bukan % yang menyesatkan.
+    const setCmpRp = (id, val, prev, inverted) => {
+      const el = $(id);
+      const d = val - prev;
+      const isUp = d > 0;
+      const isGood = inverted ? !isUp : isUp;
+      el.className = 'sc-compare ' + (Math.abs(d) < 1 ? 'flat' : isGood ? 'up' : 'down');
+      el.textContent = (Math.abs(d) < 1 ? '— ' : isUp ? '▲ ' : '▼ ') + fmtRpShort(Math.abs(d));
     };
 
     $('valIncome').textContent = fmtRp(s.totalInc);
@@ -555,11 +583,11 @@
     $('valSavingsRate').textContent = (s.savingsRate || 0).toFixed(1) + '%';
     $('valTx').textContent = s.totalTx;
 
-    setCmp('cmpIncome',  s.totalInc, s.pTotalInc,  false);
-    setCmp('cmpExpense', s.totalExp, s.pTotalExp,  true);
-    setCmp('cmpBalance', s.balance,  s.pBalance,   false);
-    setCmp('cmpSavingsRate', s.savingsRate || 0, s.pSavingsRate || 0, false);
-    setCmp('cmpTx',      s.totalTx,  s.pTotalTx,   false);
+    setCmpRatio('cmpIncome',  s.totalInc, s.pTotalInc,  false);
+    setCmpRatio('cmpExpense', s.totalExp, s.pTotalExp,  true);
+    setCmpRp('cmpBalance', s.balance,  s.pBalance,   false);
+    setCmpPoint('cmpSavingsRate', s.savingsRate || 0, s.pSavingsRate || 0, false);
+    setCmpRatio('cmpTx',      s.totalTx,  s.pTotalTx,   false);
 
     $('prevIncome').textContent  = 'vs bulan lalu: ' + fmtRp(s.pTotalInc);
     $('prevExpense').textContent = 'vs bulan lalu: ' + fmtRp(s.pTotalExp);
@@ -1139,17 +1167,23 @@
     } else {
       fields.type = $('edType').value;
     }
-    showToast('Menyimpan…', 'info');
-    const res = await api.editTransaction(kind, rowIndex, fields);
-    if (res.success) {
-      showToast(res.msg || 'Tersimpan', 'success');
-      closeModal('editTxModalOverlay');
-      store.invalidateAllCache();
-      loadDashboard();
-      loadTransactions();
-    } else {
-      showToast('Gagal: ' + (res.error || 'unknown'), 'error');
+    // Sama seperti form tambah transaksi: tanpa cek ini, tanggal kosong atau
+    // nominal 0 bisa lolos tersimpan dan diam-diam merusak catatan keuangan.
+    if (!fields.date || fields.amount <= 0) {
+      return showToast('Tanggal & jumlah wajib diisi dengan nominal > 0!', 'error');
     }
+    await submitWithGuard(async () => {
+      const res = await api.editTransaction(kind, rowIndex, fields);
+      if (res.success) {
+        showToast(res.msg || 'Tersimpan', 'success');
+        closeModal('editTxModalOverlay');
+        store.invalidateAllCache();
+        loadDashboard();
+        loadTransactions();
+      } else {
+        showToast('Gagal: ' + (res.error || 'unknown'), 'error');
+      }
+    }, 'btnSaveEditTx', 'Menyimpan…');
   }
 
   async function confirmDeleteEditedTx() {
@@ -1162,16 +1196,18 @@
     if (!ok) return;
     const kind = $('editKind').value;
     const rowIndex = parseInt($('editRowIndex').value, 10);
-    const res = await api.deleteTransaction(kind, rowIndex);
-    if (res.success) {
-      showToast(res.msg || 'Terhapus', 'success');
-      closeModal('editTxModalOverlay');
-      store.invalidateAllCache();
-      loadDashboard();
-      loadTransactions();
-    } else {
-      showToast('Gagal: ' + (res.error || 'unknown'), 'error');
-    }
+    await submitWithGuard(async () => {
+      const res = await api.deleteTransaction(kind, rowIndex);
+      if (res.success) {
+        showToast(res.msg || 'Terhapus', 'success');
+        closeModal('editTxModalOverlay');
+        store.invalidateAllCache();
+        loadDashboard();
+        loadTransactions();
+      } else {
+        showToast('Gagal: ' + (res.error || 'unknown'), 'error');
+      }
+    }, 'btnDeleteTx', 'Menghapus…');
   }
 
   // ────────────────────────────────────────────────────────────────
@@ -2426,6 +2462,7 @@
     if (!data.from || !data.to) return showToast('Pilih dompet asal & tujuan', 'error');
     if (data.from === data.to) return showToast('Dompet asal & tujuan tidak boleh sama', 'error');
     if (data.amount <= 0) return showToast('Nominal transfer harus > 0', 'error');
+    if (data.fee < 0) return showToast('Biaya transfer tidak boleh negatif', 'error');
     const bal = (state.wallets || {})[data.from] || 0;
     if (data.amount + data.fee > bal) {
       const ok = await MT.dialog.confirm(
@@ -2833,4 +2870,3 @@
   }
 
 })();
-
