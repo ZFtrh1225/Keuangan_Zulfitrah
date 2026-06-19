@@ -19,6 +19,20 @@
   const RETRY_BASE_MS = 600;
   const LS_SECRET_KEY = 'mtpro_app_secret';
 
+  /**
+   * Action yang MENGUBAH data (create/update/delete/save). Apps Script kadang
+   * lambat merespons walau request-nya sudah sukses diproses di server — kalau
+   * timeout lalu kita retry begitu saja, action ini bisa terkirim 2×. Contoh:
+   * addExpense timeout di percobaan pertama padahal baris pengeluarannya
+   * sudah masuk Sheet, lalu retry otomatis membuat baris duplikat (uang
+   * "berkurang dua kali" di laporan). Read-only action (get / list) aman
+   * di-retry karena cuma membaca data, jadi default retries-nya tetap jalan.
+   */
+  const MUTATING_PREFIXES = ['add', 'edit', 'update', 'delete', 'save', 'rotate'];
+  function isMutating(action) {
+    return MUTATING_PREFIXES.some(p => action.indexOf(p) === 0);
+  }
+
   /** Sleep helper */
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -44,7 +58,7 @@
   async function call(action, data, opts) {
     opts = opts || {};
     const timeoutMs = opts.timeoutMs || DEFAULT_TIMEOUT_MS;
-    const retries = opts.retries != null ? opts.retries : MAX_RETRIES;
+    const retries = opts.retries != null ? opts.retries : (isMutating(action) ? 0 : MAX_RETRIES);
     let attempt = 0;
     let lastErr = null;
 
@@ -78,6 +92,18 @@
         if (attempt > retries) break;
         await sleep(RETRY_BASE_MS * Math.pow(2, attempt - 1));
       }
+    }
+    if (isMutating(action) && lastErr) {
+      // Koneksi putus/timeout TIDAK selalu berarti request gagal di server —
+      // bisa saja datanya sudah tersimpan tapi responsnya yang tidak sampai.
+      // Jangan klaim "gagal" secara pasti; minta user cek dulu sebelum ulang
+      // supaya tidak input transaksi yang sama dua kali.
+      return {
+        success: false,
+        uncertain: true,
+        error: 'Koneksi terputus saat menyimpan (' + lastErr.message + '). ' +
+          'Cek riwayat transaksi dulu sebelum mencoba lagi — datanya mungkin sudah tersimpan.'
+      };
     }
     return { success: false, error: lastErr ? lastErr.message : 'Network failed' };
   }
