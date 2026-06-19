@@ -25,11 +25,22 @@
     return sign + 'Rp ' + Math.round(abs).toLocaleString('id-ID');
   }
 
-  /** Format input bertopeng "1.234.567" → kembalikan integer */
+  /**
+   * Format input bertopeng "1.234.567" → kembalikan integer.
+   * Hanya boleh ada SATU tanda "-" dan harus di posisi paling depan — kalau
+   * tidak, dianggap bukan tanda negatif (dibuang) supaya nominal tidak
+   * ke-parse setengah jalan. Tanpa ini, string seperti "12-34" akan lolos
+   * jadi 12 saja (parseInt berhenti di karakter non-digit pertama) padahal
+   * harusnya dianggap input tidak valid → nominal finansial bisa salah catat.
+   */
   function parseRp(s) {
     if (!s) return 0;
-    const cleaned = String(s).replace(/[^0-9-]/g, '');
-    return parseInt(cleaned, 10) || 0;
+    let str = String(s).trim();
+    const isNegative = str.charAt(0) === '-';
+    const digitsOnly = str.replace(/[^0-9]/g, '');
+    if (!digitsOnly) return 0;
+    const n = parseInt(digitsOnly, 10) || 0;
+    return isNegative ? -n : n;
   }
 
   /** Pasang masking ribuan ke <input type="text"> */
