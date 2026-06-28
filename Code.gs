@@ -508,17 +508,26 @@ function addGoalDeposit(data) {
   const amount = Number(data.amount) || 0;
   if (amount <= 0) throw new Error('Nominal setoran harus lebih dari 0');
 
-  // kolom 4 = Saved
-  const cell = sh.getRange(row, 4);
-  const cur = parseFloat(cell.getValue()) || 0;
-  const newSaved = cur + amount;
-  cell.setValue(newSaved);
-
-  return {
-    success: true,
-    msg: 'Setoran ' + fmtRp_(amount) + ' tercatat 💰',
-    newSaved: newSaved
-  };
+  // Lock wajib di sini: tanpa ini, dua setoran yang masuk hampir bersamaan
+  // (mis. dari 2 tab/perangkat) bisa sama-sama baca nilai "Saved" lama lalu
+  // saling timpa saat menulis — salah satu setoran hilang tanpa error.
+  const lock = LockService.getScriptLock();
+  const gotLock = lock.tryLock(10000);
+  if (!gotLock) throw new Error('Sistem sedang sibuk, coba lagi sebentar.');
+  try {
+    // kolom 4 = Saved
+    const cell = sh.getRange(row, 4);
+    const cur = parseFloat(cell.getValue()) || 0;
+    const newSaved = cur + amount;
+    cell.setValue(newSaved);
+    return {
+      success: true,
+      msg: 'Setoran ' + fmtRp_(amount) + ' tercatat 💰',
+      newSaved: newSaved
+    };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -1143,9 +1152,15 @@ function getDashboardData(month, year) {
   // Sekarang: liquidAssets = sum(walletBalances) (single source of truth).
   // Asset rows tipe Kas tetap disimpan untuk backward-compat tapi tidak
   // dijumlahkan ke liquid (hanya muncul di daftar aset sebagai info).
+  //
+  // PENTING: jumlahkan SEMUA saldo dompet apa adanya (boleh negatif), bukan
+  // di-floor ke 0. Dompet yang minus (overdraft/kepakai duluan) adalah
+  // kewajiban riil — kalau di-floor, defisitnya hilang begitu saja dari
+  // neraca dan netWorth/liquidAssets jadi OVERSTATED (Kekayaan Bersih &
+  // Dana Darurat terlihat lebih sehat dari kenyataan).
   const walletLiquidTotal = Object.values(walletBalances)
-    .reduce((s, v) => s + (Number(v) > 0 ? Number(v) : 0), 0);
-  if (walletLiquidTotal > 0 || walletConfigs.length > 0) {
+    .reduce((s, v) => s + (Number(v) || 0), 0);
+  if (walletLiquidTotal !== 0 || walletConfigs.length > 0) {
     // Replace asset-derived liquidAssets dengan wallet-derived agar tidak ganda.
     // Tetap simpan original untuk debug di asset list.
     const oldLiquid = liquidAssets;
