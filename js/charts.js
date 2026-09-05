@@ -366,6 +366,10 @@
     renderGauge,
     renderSparkline,
     renderForecast,
-    renderAllocation
+    renderAllocation,
+    // Exposed read-only supaya tab-navigation.js bisa resize() chart yang
+    // baru terlihat setelah sebelumnya display:none (Chart.js salah hitung
+    // dimensi kanvas 0×0 kalau tidak di-resize ulang saat tab berpindah).
+    _instances: charts
   };
 })();
