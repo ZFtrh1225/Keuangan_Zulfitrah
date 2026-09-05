@@ -24,7 +24,7 @@
   'use strict';
 
   const MT = window.MT;
-  const { fmtRp, fmtRpShort, parseRp, applyCurrencyMask, fmtDateShort, fmtDateLong, fmtPct, escapeHtml, mdToHtml, debounce, daysFromToday } = MT.fmt;
+  const { fmtRp, fmtRpShort, parseRp, applyCurrencyMask, fmtDateShort, fmtDateLong, fmtPct, escapeHtml, mdToHtml, debounce, daysFromToday, animateCountUp } = MT.fmt;
   const api = MT.api;
   const store = MT.store;
   const state = MT.state;
@@ -106,24 +106,6 @@
     el.classList.toggle('hidden', !show);
     el.setAttribute('aria-hidden', String(!show));
   }
-  function animateValue(el, target, formatter, duration = 700) {
-    if (!el) return;
-    const start = 0;
-    const startTime = performance.now();
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || Math.abs(target) < 1) {
-      el.textContent = formatter(target);
-      return;
-    }
-    function tick(now) {
-      const t = Math.min(1, (now - startTime) / duration);
-      const eased = 1 - Math.pow(1 - t, 3);
-      el.textContent = formatter(start + (target - start) * eased);
-      if (t < 1) requestAnimationFrame(tick);
-      else el.textContent = formatter(target);
-    }
-    requestAnimationFrame(tick);
-  }
-
   function showToast(msg, type = 'info') {
     const el = $('toast');
     if (!el) return;
@@ -147,6 +129,14 @@
   // ────────────────────────────────────────────────────────────────
   //  INIT
   // ────────────────────────────────────────────────────────────────
+  // Lifestyle Creep Detector: cek sekali saat tab Analytics pertama kali
+  // dibuka (data tahunan, tidak perlu re-fetch tiap render dashboard bulanan).
+  window.addEventListener('mt:tab-shown', (e) => {
+    if (e.detail && e.detail.tabId === 'tab-analytics' && MT.lifestyleCreep) {
+      MT.lifestyleCreep.checkAndRender();
+    }
+  });
+
   document.addEventListener('DOMContentLoaded', init);
 
   async function init() {
@@ -157,26 +147,6 @@
     setupCurrencyMasks();
     setupFab();
     setupSearch();
-    // Delay sedikit agar DOM tab sudah siap di mobile WebView
-    try { setupBottomNav(); } catch (e) { console.error(e); }
-    // Safety net: pastikan minimal dashboard terlihat setelah 100ms
-    setTimeout(function () {
-      var active = document.querySelector('.main-tab.active');
-      if (!active) {
-        var dash = document.getElementById('tab-dashboard');
-        if (dash) {
-          dash.removeAttribute('hidden');
-          dash.classList.add('active');
-          dash.style.display = 'block';
-        }
-      }
-      // Pastikan loading overlay tidak menggantung
-      var ov = document.getElementById('loadingOverlay');
-      if (ov) {
-        ov.classList.add('hidden');
-        ov.setAttribute('aria-hidden', 'true');
-      }
-    }, 150);
 
     // Load kategori dari cache lokal dulu (instan), lalu fetch terbaru di background
     const cachedCats = store.getCachedCategories();
@@ -187,6 +157,7 @@
     loadCategories(); // refresh non-blocking
 
     if (!store.isOnboarded()) {
+      openModal('onboardingOverlay');
       setupOnboarding();
     }
 
@@ -461,76 +432,6 @@
     });
   }
 
-
-  // ────────────────────────────────────────────────────────────────
-  //  BOTTOM NAVIGATION + TAB SWITCHING
-  // ────────────────────────────────────────────────────────────────
-  function setupBottomNav() {
-    const nav = document.querySelector('.bottom-nav');
-    if (!nav) return;
-    const LS_LAST_TAB = 'mtpro_last_tab';
-
-    function switchToTab(tabId) {
-      try {
-        const tabs = document.querySelectorAll('.main-tab');
-        let target = document.getElementById(tabId);
-        // Fallback ke dashboard kalau target tidak ada
-        if (!target) {
-          tabId = 'tab-dashboard';
-          target = document.getElementById(tabId);
-        }
-        tabs.forEach(t => {
-          t.classList.remove('active');
-          t.setAttribute('hidden', '');
-        });
-        if (target) {
-          target.removeAttribute('hidden');
-          target.hidden = false;
-          target.classList.add('active');
-          // Paksa visible (beberapa WebView mobile bandel)
-          target.style.display = 'block';
-        }
-        // Pastikan tab lain benar-benar tersembunyi
-        tabs.forEach(t => {
-          if (t !== target) {
-            t.style.display = '';
-          }
-        });
-        nav.querySelectorAll('.nav-item').forEach(item => {
-          const isActive = item.dataset.tabTarget === tabId;
-          item.classList.toggle('active', isActive);
-          item.setAttribute('aria-selected', isActive ? 'true' : 'false');
-        });
-        try { localStorage.setItem(LS_LAST_TAB, tabId); } catch (e) {}
-      } catch (err) {
-        // Jangan pernah biarkan layar blank
-        console.error('switchToTab error', err);
-        const dash = document.getElementById('tab-dashboard');
-        if (dash) {
-          dash.removeAttribute('hidden');
-          dash.classList.add('active');
-          dash.style.display = 'block';
-        }
-      }
-    }
-
-    nav.querySelectorAll('.nav-item').forEach(item => {
-      item.addEventListener('click', (e) => {
-        e.preventDefault();
-        if (item.dataset.tabTarget) switchToTab(item.dataset.tabTarget);
-      });
-    });
-
-    let initial = 'tab-dashboard';
-    try {
-      const saved = localStorage.getItem(LS_LAST_TAB);
-      if (saved && document.getElementById(saved)) initial = saved;
-    } catch (e) {}
-    switchToTab(initial);
-    window.MT = window.MT || {};
-    MT.switchTab = switchToTab;
-  }
-
   // ────────────────────────────────────────────────────────────────
   //  SEARCH
   // ────────────────────────────────────────────────────────────────
@@ -544,78 +445,35 @@
   //  ONBOARDING
   // ────────────────────────────────────────────────────────────────
   function setupOnboarding() {
-    try { closeModal('onboardingOverlay'); } catch (e) {}
-    try {
-    const steps = [
-      { target: '#fab', title: 'Mulai dari sini', body: 'Tombol + ini cara tercepat mencatat pemasukan, pengeluaran, atau tabungan.', placement: 'top' },
-      { target: '#summaryGrid', title: 'Ringkasan Keuangan', body: 'Lihat pemasukan, pengeluaran, dan sisa saldo bulan ini. Panah membandingkan dengan bulan lalu.', placement: 'bottom' },
-      { target: '.bottom-nav', title: 'Navigasi Utama', body: 'Home = ringkasan. Analytics = grafik & insight. Planning = budget, goals, FIRE. Profile = pengaturan.', placement: 'top' },
-      { target: '#btnWealth', title: 'Aset & Hutang', body: 'Catat aset dan kewajiban agar Net Worth, Dana Darurat, dan DSR akurat.', placement: 'bottom' }
-    ];
-    const valid = steps.filter(s => document.querySelector(s.target));
-    if (!valid.length) { store.setOnboarded(); return; }
-    startGuidedTour(valid);
-    } catch (e) { console.error('onboarding', e); store.setOnboarded(); }
-  }
+    let step = 1;
+    const next = $('btnOnbNext');
+    const skip = $('btnOnbSkip');
 
-  function startGuidedTour(steps) {
-    let host = document.getElementById('tourHost');
-    if (!host) {
-      host = document.createElement('div');
-      host.id = 'tourHost';
-      host.className = 'tour-host';
-      document.body.appendChild(host);
+    function show(n) {
+      document.querySelectorAll('.onb-step').forEach(s => s.classList.remove('active'));
+      const cur = document.querySelector('.onb-step[data-step="' + n + '"]');
+      if (cur) cur.classList.add('active');
+      next.textContent = n === 3 ? '🚀 Mulai!' : 'Lanjut →';
     }
-    function cleanup() {
-      host.classList.remove('open');
-      host.innerHTML = '';
-      document.querySelectorAll('.tour-highlight').forEach(el => el.classList.remove('tour-highlight'));
-      store.setOnboarded();
-    }
-    function showStep(i) {
-      if (i >= steps.length) {
-        cleanup();
-        showToast('Siap! Mulai catat transaksi pertamamu 🚀', 'success');
+
+    next.addEventListener('click', () => {
+      if (step === 3) {
+        store.setOnboarded();
+        closeModal('onboardingOverlay');
+        // Lanjutkan dengan spotlight tour interaktif — modal barusan
+        // menjelaskan KONSEP, tour ini menunjukkan LOKASI tombol asli.
+        setTimeout(() => { if (MT.onboardingTour) MT.onboardingTour.start(); }, 300);
         return;
       }
-      const step = steps[i];
-      const target = document.querySelector(step.target);
-      if (!target) { showStep(i + 1); return; }
-      document.querySelectorAll('.tour-highlight').forEach(el => el.classList.remove('tour-highlight'));
-      target.classList.add('tour-highlight');
-      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      const rect = target.getBoundingClientRect();
-      const pad = 8;
-      const spotTop = rect.top + window.scrollY - pad;
-      const spotLeft = rect.left + window.scrollX - pad;
-      const spotW = rect.width + pad * 2;
-      const spotH = rect.height + pad * 2;
-      const tipW = 300;
-      let tipTop = step.placement === 'top' ? spotTop - 12 : spotTop + spotH + 12;
-      let tipLeft = Math.max(12, Math.min(window.innerWidth - tipW - 12, spotLeft + spotW / 2 - tipW / 2));
-      const isLast = i === steps.length - 1;
-      host.innerHTML = `
-        <div class="tour-backdrop"></div>
-        <div class="tour-spotlight" style="top:${spotTop}px;left:${spotLeft}px;width:${spotW}px;height:${spotH}px;"></div>
-        <div class="tour-tooltip" style="top:${tipTop}px;left:${tipLeft}px;width:${tipW}px;">
-          <div class="tour-step-count">${i + 1} / ${steps.length}</div>
-          <div class="tour-title">${escapeHtml(step.title)}</div>
-          <div class="tour-body">${escapeHtml(step.body)}</div>
-          <div class="tour-actions">
-            <button type="button" class="tour-btn tour-skip">Lewati</button>
-            <button type="button" class="tour-btn tour-next primary">${isLast ? 'Selesai 🚀' : 'Lanjut →'}</button>
-          </div>
-        </div>`;
-      host.classList.add('open');
-      if (step.placement === 'top') {
-        const tip = host.querySelector('.tour-tooltip');
-        if (tip) tip.style.top = (spotTop - tip.offsetHeight - 12) + 'px';
-      }
-      host.querySelector('.tour-skip').onclick = cleanup;
-      host.querySelector('.tour-next').onclick = () => showStep(i + 1);
-      host.querySelector('.tour-backdrop').onclick = cleanup;
-    }
-    setTimeout(() => showStep(0), 400);
+      step++;
+      show(step);
+    });
+    skip.addEventListener('click', () => {
+      store.setOnboarded();
+      closeModal('onboardingOverlay');
+      setTimeout(() => { if (MT.onboardingTour) MT.onboardingTour.start(); }, 300);
+    });
+    show(step);
   }
 
   // ────────────────────────────────────────────────────────────────
@@ -686,7 +544,6 @@
     renderStreak(d.streak || null);
     renderCalendar(d.calendar || null);
     renderEnvelopeBudgets(d.categoryBudgets || []);
-    renderLifestyleCreep(d);
   }
 
   // ── Summary ──
@@ -729,14 +586,25 @@
       el.textContent = (Math.abs(d) < 1 ? '— ' : isUp ? '▲ ' : '▼ ') + fmtRpShort(Math.abs(d));
     };
 
-    animateValue($('valIncome'), s.totalInc || 0, fmtRp);
-    animateValue($('valExpense'), s.totalExp || 0, fmtRp);
+    // Count-up animation: baca nilai sebelumnya dari data-raw (default 0 di
+    // load pertama), lalu animasikan ke nilai baru — sentuhan premium tanpa
+    // library eksternal. Fallback ke set langsung kalau animateCountUp absen.
+    const animateVal = (id, val) => {
+      const el = $(id);
+      if (!el) return;
+      const from = Number(el.dataset.raw || 0);
+      if (typeof animateCountUp === 'function') animateCountUp(el, from, val);
+      else el.textContent = fmtRp(val);
+      el.dataset.raw = String(val);
+    };
+    animateVal('valIncome', s.totalInc);
+    animateVal('valExpense', s.totalExp);
     const balEl = $('valBalance');
-    animateValue(balEl, s.balance || 0, fmtRp);
-    balEl.classList.toggle('negative', (s.balance || 0) < 0);
-    animateValue($('valSaving'), s.totalSav || 0, fmtRp);
-    animateValue($('valSavingsRate'), s.savingsRate || 0, n => n.toFixed(1) + '%', 500);
-    animateValue($('valTx'), s.totalTx || 0, n => String(Math.round(n)), 400);
+    animateVal('valBalance', s.balance);
+    balEl.classList.toggle('negative', s.balance < 0);
+    animateVal('valSaving', s.totalSav);
+    $('valSavingsRate').textContent = (s.savingsRate || 0).toFixed(1) + '%';
+    $('valTx').textContent = s.totalTx;
 
     setCmpRatio('cmpIncome',  s.totalInc, s.pTotalInc,  false);
     setCmpRatio('cmpExpense', s.totalExp, s.pTotalExp,  true);
@@ -1385,8 +1253,12 @@
       return;
     }
     grid.innerHTML = goals.map(g => {
-      const pct = g.target > 0 ? Math.min(100, g.saved / g.target * 100) : 0;
-      const remaining = Math.max(0, g.target - g.saved);
+      // Inflasi: goal DP rumah/kuliah dst pakai target ter-inflasi untuk progress
+      // & kebutuhan bulanan yang realistis — bukan nominal hari ini yang statis.
+      const infl = MT.inflation ? MT.inflation.effectiveGoalTarget(g) : { effectiveTarget: g.target, note: null };
+      const effTarget = infl.effectiveTarget;
+      const pct = effTarget > 0 ? Math.min(100, g.saved / effTarget * 100) : 0;
+      const remaining = Math.max(0, effTarget - g.saved);
       const dleft = g.deadline ? daysFromToday(g.deadline) : null;
       const monthsLeft = dleft != null ? Math.max(0, Math.round(dleft / 30)) : null;
       const monthlyNeed = monthsLeft && monthsLeft > 0 ? remaining / monthsLeft : remaining;
@@ -1395,7 +1267,7 @@
         <div class="goal-card" data-goal="${g.rowIndex}">
           <div class="goal-head">
             <div>
-              <div class="goal-name">${escapeHtml(g.name)}</div>
+              <div class="goal-name">${escapeHtml(g.name)}${g.inflationSensitive ? '<span class="inflation-badge">📉 Inflasi</span>' : ''}</div>
               ${g.deadline ? `<div class="muted micro-label">Deadline: ${fmtDateLong(g.deadline)}${dleft != null ? ' · ' + (dleft >= 0 ? dleft + ' hari lagi' : Math.abs(dleft) + ' hari lewat') : ''}</div>` : ''}
             </div>
             <span class="goal-cat-badge">${escapeHtml(g.category || 'Umum')}</span>
@@ -1406,8 +1278,9 @@
           <div class="goal-numbers">
             <span class="saved">${fmtRpShort(g.saved)}</span>
             <span class="goal-pct ${done ? 'done' : ''}">${pct.toFixed(0)}%</span>
-            <span class="target">/ ${fmtRpShort(g.target)}</span>
+            <span class="target">/ ${fmtRpShort(effTarget)}</span>
           </div>
+          ${infl.note ? `<div class="goal-inflation-note">${escapeHtml(infl.note)}</div>` : ''}
           <div class="goal-meta">
             <div>${monthsLeft != null && !done ? '~' + fmtRpShort(monthlyNeed) + '/bulan' : (done ? '🏆 Tercapai!' : 'Tanpa deadline')}</div>
             <div class="goal-actions">
@@ -1451,6 +1324,8 @@
         $('goalDeadline').value = g.deadline || '';
         $('goalCategory').value = g.category || 'Lainnya';
         $('goalNotes').value = g.notes || '';
+        if ($('goalInflationSensitive')) $('goalInflationSensitive').checked = !!g.inflationSensitive;
+        if ($('goalInflationRate')) $('goalInflationRate').value = g.inflationRate != null ? g.inflationRate : 6;
         $('goalModalTitle').textContent = '✏️ Edit Tujuan';
       }
     } else {
@@ -1460,9 +1335,19 @@
       $('goalDeadline').value = '';
       $('goalCategory').value = 'Dana Darurat';
       $('goalNotes').value = '';
+      if ($('goalInflationSensitive')) $('goalInflationSensitive').checked = false;
+      if ($('goalInflationRate')) $('goalInflationRate').value = 6;
       $('goalModalTitle').textContent = '🎯 Tujuan Baru';
     }
+    toggleGoalInflationRateVisibility();
     openModal('goalModalOverlay');
+  }
+
+  /** Tampilkan input rate inflasi cuma kalau checkbox "harga naik" dicentang */
+  function toggleGoalInflationRateVisibility() {
+    const group = $('goalInflationRateGroup');
+    const checked = $('goalInflationSensitive') && $('goalInflationSensitive').checked;
+    if (group) group.style.display = checked ? '' : 'none';
   }
 
   async function submitGoal() {
@@ -1472,7 +1357,9 @@
       saved: parseRp($('goalSaved').value),
       deadline: $('goalDeadline').value,
       category: $('goalCategory').value,
-      notes: $('goalNotes').value.trim()
+      notes: $('goalNotes').value.trim(),
+      inflationSensitive: $('goalInflationSensitive') ? $('goalInflationSensitive').checked : false,
+      inflationRate: $('goalInflationRate') ? (parseFloat($('goalInflationRate').value) || 6) : 6
     };
     if (!data.name || data.target <= 0) {
       showToast('Lengkapi nama & target!', 'error');
@@ -2024,59 +1911,6 @@
         </div>
       `;
     }).join('');
-  }
-
-
-  function renderLifestyleCreep(d) {
-    const el = $('lifestyleCreepAlert');
-    const msgEl = $('lifestyleCreepMsg');
-    if (!el || !msgEl) return;
-    const months = (d.sixMonths || []).filter(m => m.income > 0 || m.expenses > 0);
-    if (months.length < 3) { el.hidden = true; return; }
-    const recent = months.slice(-3);
-    const older = months.slice(0, Math.min(3, months.length - 3));
-    if (!older.length) { el.hidden = true; return; }
-    const avg = (arr, key) => arr.reduce((s, m) => s + (m[key] || 0), 0) / arr.length;
-    const recentIncome = avg(recent, 'income');
-    const olderIncome = avg(older, 'income');
-    const recentWants = avg(recent, 'wants');
-    const olderWants = avg(older, 'wants');
-    const recentSav = avg(recent, 'savings');
-    const olderSav = avg(older, 'savings');
-    if (olderIncome < 1000) { el.hidden = true; return; }
-    const incomeGrowth = ((recentIncome - olderIncome) / olderIncome) * 100;
-    const wantsGrowth = olderWants > 0 ? ((recentWants - olderWants) / olderWants) * 100 : (recentWants > 0 ? 100 : 0);
-    const incomeDelta = recentIncome - olderIncome;
-    const savDelta = recentSav - olderSav;
-    let captureRate = null;
-    if (incomeDelta > 0) captureRate = Math.max(0, Math.min(100, (savDelta / incomeDelta) * 100));
-    let level = 'ok', title = '', message = '';
-    if (incomeGrowth > 5 && wantsGrowth > incomeGrowth + 5) {
-      level = 'critical';
-      title = 'Peringatan: Lifestyle Creep Terdeteksi';
-      message = `Pemasukan naik ${incomeGrowth.toFixed(0)}%, tapi pengeluaran Keinginan naik ${wantsGrowth.toFixed(0)}%. ` +
-        (captureRate != null ? `Hanya ${captureRate.toFixed(0)}% dari kenaikan income yang berhasil ditabung.` : 'Hampir tidak ada tambahan tabungan dari kenaikan income.');
-    } else if (incomeGrowth > 5 && captureRate != null && captureRate < 40) {
-      level = 'warning';
-      title = 'Lifestyle Creep Ringan';
-      message = `Pemasukan naik ${incomeGrowth.toFixed(0)}%, tapi hanya ${captureRate.toFixed(0)}% yang ditabung. Target ideal: 50–75% dari setiap kenaikan income.`;
-    } else if (incomeGrowth > 5 && captureRate != null && captureRate >= 75) {
-      level = 'excellent';
-      title = 'Excellent: Mengalahkan Lifestyle Creep';
-      message = `Pemasukan naik ${incomeGrowth.toFixed(0)}% dan ${captureRate.toFixed(0)}% di antaranya ditabung. Sesuai 75% rule — teruskan!`;
-    } else {
-      el.hidden = true;
-      return;
-    }
-    el.hidden = false;
-    el.style.borderColor = level === 'critical' ? 'var(--red)' : level === 'warning' ? 'var(--amber)' : 'var(--green)';
-    el.style.background = level === 'critical' ? 'var(--rdim)' : level === 'warning' ? 'var(--adm)' : 'var(--gdim)';
-    const titleEl = el.querySelector('div[style*="font-weight"]');
-    if (titleEl) {
-      titleEl.textContent = (level === 'critical' ? '⚠️ ' : level === 'excellent' ? '🟢 ' : '⚡ ') + title;
-      titleEl.style.color = level === 'critical' ? 'var(--red)' : level === 'warning' ? 'var(--amber)' : 'var(--green)';
-    }
-    msgEl.textContent = message;
   }
 
   function openCatBudgetModal() {
@@ -2854,6 +2688,7 @@
   // ════════════════════════════════════════════════════════════════
   function openDebtPayoffModal() {
     $('debtPayoffExtra').value = '';
+    if ($('debtPayoffInvestReturn')) $('debtPayoffInvestReturn').value = '7';
     $('debtPayoffResult').hidden = true;
     $('debtPayoffResult').innerHTML = '';
     setupCurrencyMasks();
@@ -2862,8 +2697,9 @@
 
   async function runDebtPayoff() {
     const extra = parseRp($('debtPayoffExtra').value);
+    const assumedInvestReturn = $('debtPayoffInvestReturn') ? (parseFloat($('debtPayoffInvestReturn').value) || 7) : 7;
     await submitWithGuard(async () => {
-      const res = await api.calculateDebtPayoff({ extraPayment: extra, strategy: 'both', assumedInvestReturn: 7 });
+      const res = await api.calculateDebtPayoff({ extraPayment: extra, strategy: 'both', assumedInvestReturn });
       if (!res.success) return showToast('Gagal: ' + res.error, 'error');
       if (!res.strategies || (!res.strategies.snowball && !res.strategies.avalanche)) {
         $('debtPayoffResult').hidden = false;
@@ -2872,8 +2708,12 @@
       }
       const s = res.strategies.snowball;
       const a = res.strategies.avalanche;
-      const cod = res.costOfDebt || {};
-      const adviceClass = cod.adviceLevel === 'critical' ? 'dp-advice-critical' : cod.adviceLevel === 'warning' ? 'dp-advice-warning' : 'dp-advice-ok';
+      // Fokus pada Debt Optimization: panel "Cost of Debt vs Investment
+      // Return" — mengingatkan kalau bunga utang > return investasi, stop
+      // investasi dulu & lunasi utang (return bebas risiko vs asumsi).
+      const codPanel = (MT.debtOptimizer && MT.debtOptimizer.renderCostOfDebtPanel)
+        ? MT.debtOptimizer.renderCostOfDebtPanel(res)
+        : '';
       $('debtPayoffResult').hidden = false;
       $('debtPayoffResult').innerHTML = `
         <div class="dp-summary">
@@ -2881,16 +2721,6 @@
           <div><b>Total min payment:</b> ${fmtRp(res.totalMinPayment)}/bln</div>
           <div><b>Extra payment:</b> ${fmtRp(extra)}/bln</div>
         </div>
-        ${cod.advice ? `
-        <div class="dp-cost-of-debt ${adviceClass}">
-          <div class="dp-cod-title">💡 Analisis Biaya Utang vs Investasi</div>
-          <div class="dp-cod-stats">
-            <span>Bunga utang rata-rata: <b>${escapeHtml(cod.weightedAvgInterestPct || '0')}%</b></span>
-            <span>Asumsi return investasi: <b>${escapeHtml(cod.assumedInvestReturnPct || '7')}%</b></span>
-            ${cod.highestRateName ? `<span>Utang termahal: <b>${escapeHtml(cod.highestRateName)} (${escapeHtml(cod.highestRatePct)}%)</b></span>` : ''}
-          </div>
-          <div class="dp-cod-advice">${escapeHtml(cod.advice)}</div>
-        </div>` : ''}
         <div class="dp-strategies">
           <div class="dp-card">
             <div class="dp-title">❄️ Snowball</div>
@@ -2908,6 +2738,7 @@
           </div>
         </div>
         ${res.recommendation ? `<div class="dp-rec">${escapeHtml(res.recommendation)}</div>` : ''}
+        ${codPanel}
       `;
     }, 'btnRunDebtPayoff', 'Menghitung…');
   }
@@ -2926,21 +2757,19 @@
     $('fireCurrent').value = invest ? invest.toLocaleString('id-ID') : '';
     $('fireReturn').value = '7';
     $('fireWithdrawal').value = '4';
-    if ($('fireInflation')) $('fireInflation').value = '5';
     $('fireResult').hidden = true;
     setupCurrencyMasks();
     openModal('fireModalOverlay');
   }
 
   async function runFireProjection() {
-    const inflationRate = parseFloat($('fireInflation') ? $('fireInflation').value : 5) || 5;
     const data = {
       monthlyExpense: parseRp($('fireMonthlyExp').value),
       monthlyContribution: parseRp($('fireMonthlyContrib').value),
       currentInvestment: parseRp($('fireCurrent').value),
       returnRate: parseFloat($('fireReturn').value) || 7,
       withdrawalRate: parseFloat($('fireWithdrawal').value) || 4,
-      inflationRate: inflationRate
+      inflationRate: parseFloat($('fireInflation').value) || 5
     };
     if (data.monthlyExpense <= 0) return showToast('Isi pengeluaran bulanan dulu', 'error');
     await submitWithGuard(async () => {
@@ -2949,20 +2778,25 @@
       const result = $('fireResult');
       result.hidden = false;
       const reach = res.yearsToFire != null;
-      const realRetPct = res.realReturn != null ? (res.realReturn * 100).toFixed(2) : '—';
+      // Kalkulator Inflasi Dinamis: tunjukkan selisih nyata antara proyeksi
+      // naif (tanpa inflasi) vs realistis — inilah yang mengatasi false
+      // sense of security dari kalkulator FIRE versi lama.
+      const compareNote = (MT.inflation && MT.inflation.comparisonNote)
+        ? MT.inflation.comparisonNote(res.naiveYearsToFire, res.yearsToFire)
+        : '';
       result.innerHTML = `
         <div class="fire-summary">
-          <div><span>Target FIRE (daya beli hari ini):</span> <b>${fmtRp(res.fireNumber)}</b></div>
+          <div><span>Target FIRE (${(data.withdrawalRate)}% rule):</span> <b>${fmtRp(res.fireNumber)}</b> ${MT.inflation ? MT.inflation.inflationBadgeHtml(res.inflationRate.toFixed(1)) : ''}</div>
           <div><span>Pengeluaran tahunan:</span> ${fmtRp(res.annualExpense)}</div>
-          <div><span>Return nominal → riil:</span> <b>${data.returnRate}% → ${realRetPct}%</b> <span class="muted">(setelah inflasi ${inflationRate}%)</span></div>
+          <div><span>Real return (nominal ${data.returnRate}% − inflasi ${res.inflationRate.toFixed(1)}%):</span> <b>${res.realReturn.toFixed(1)}%/thn</b></div>
           ${reach
             ? `<div class="fire-reach"><span>🎯 Tercapai dalam:</span> <b>${res.yearsToFire.toFixed(1)} tahun</b></div>`
-            : `<div class="fire-warn">⚠️ Butuh > 50 tahun dengan asumsi saat ini.</div>`}
-          ${res.futureNominalFireNumber ? `<div><span>Nilai nominal setara di masa depan:</span> <b>${fmtRp(res.futureNominalFireNumber)}</b></div>` : ''}
-          ${res.coastYears ? `<div><span>Coast FIRE (stop kontribusi sekarang):</span> <b>${res.coastYears.toFixed(1)} tahun</b></div>` : ''}
+            : `<div class="fire-warn">⚠️ Butuh > 50 tahun. Tingkatkan kontribusi atau diversifikasi instrumen.</div>`}
+          ${res.coastYears ? `<div><span>Coast FIRE (kalau berhenti kontribusi sekarang):</span> <b>${res.coastYears.toFixed(1)} tahun</b></div>` : ''}
         </div>
+        ${compareNote ? `<div class="fire-compare-note">${escapeHtml(compareNote)}</div>` : ''}
         <div class="fire-summary-text">${escapeHtml(res.summary || '')}</div>
-        <div class="fire-tl-head">📈 Proyeksi modal (daya beli hari ini)</div>
+        <div class="fire-tl-head">📈 Proyeksi modal per tahun (nilai riil hari ini)</div>
         <div class="fire-timeline">
           ${(res.timeline || []).slice(0, 30).map(t => `
             <div class="fire-tl-row">
@@ -3024,13 +2858,6 @@
 
     const wire = (id, fn) => { const el = $(id); if (el) el.addEventListener('click', fn); };
 
-    // Profile tab quick actions
-    wire('profileBtnSettings', () => openSettings());
-    wire('profileBtnWallets', () => openWalletsModal());
-    wire('profileBtnAuth', () => openAuthModal());
-    wire('profileBtnTheme', () => { const btn = $('btnTheme'); if (btn) btn.click(); });
-    wire('profileBtnPdf', () => { const btn = $('btnPdf'); if (btn) btn.click(); });
-
     // Header buttons baru
     wire('btnTransfer', openTransferModal);
     wire('btnAuth', openAuthModal);
@@ -3068,6 +2895,10 @@
 
     // Spending DNA
     wire('btnSpendingDNA', openSpendingDNA);
+
+    // Kalkulator Inflasi Dinamis: toggle input rate saat checkbox goal dicentang
+    const goalInflCb = $('goalInflationSensitive');
+    if (goalInflCb) goalInflCb.addEventListener('change', toggleGoalInflationRateVisibility);
 
     // FAB items baru
     document.querySelectorAll('#fabMenu .fab-item').forEach(it => {
