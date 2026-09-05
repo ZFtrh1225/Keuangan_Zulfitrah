@@ -2227,8 +2227,17 @@ select.form-input {
   .mt-dialog-actions button { width: 100%; }
 }
 /* ──────────────── 22. BOTTOM NAVIGATION & TABS ──────────────── */
-.main-tab { display: none; animation: tabFade .3s ease-out; }
-.main-tab.active { display: block; }
+.main-tab {
+  display: none;
+}
+.main-tab.active {
+  display: block !important;
+  animation: tabFade .3s ease-out;
+}
+/* Pastikan atribut hidden tidak mengalahkan .active di mobile browsers */
+.main-tab.active[hidden] {
+  display: block !important;
+}
 
 @keyframes tabFade {
   from { opacity: 0; transform: translateY(10px); }
@@ -2285,8 +2294,12 @@ html[data-theme="light"] .bottom-nav {
 
 /* Hide on large desktop screens */
 @media (min-width: 1200px) {
-  .bottom-nav { display: none; }
-  .main-tab { display: block !important; } /* override tab behavior on desktop */
+  .bottom-nav { display: none !important; }
+  .main-tab,
+  .main-tab.active,
+  .main-tab[hidden] {
+    display: block !important;
+  }
 }
 
 @media (max-width: 1199px) {
