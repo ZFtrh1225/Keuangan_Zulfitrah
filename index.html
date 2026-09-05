@@ -565,65 +565,21 @@
     </section>
     </div>
     
-
-    <!-- ═══════════════ TAB: PROFILE ═══════════════ -->
-    <div id="tab-profile" class="main-tab" hidden>
-      <section class="fadeUp">
-        <div class="section-title">👤 Profil & Pengaturan</div>
-        <div class="card" style="margin-bottom:16px;">
-          <div class="card-title">Akses Cepat</div>
-          <div class="settings-quick-actions">
-            <button class="settings-link" id="profileBtnSettings" type="button">
-              <span class="settings-link-icon">⚙️</span>
-              <span class="settings-link-text"><b>Pengaturan Umum</b><span class="muted">Aturan anggaran, plafon kategori</span></span>
-              <span class="settings-link-arrow">›</span>
-            </button>
-            <button class="settings-link" id="profileBtnWallets" type="button">
-              <span class="settings-link-icon">👛</span>
-              <span class="settings-link-text"><b>Kelola Dompet</b><span class="muted">Saldo awal, tambah/hapus dompet</span></span>
-              <span class="settings-link-arrow">›</span>
-            </button>
-            <button class="settings-link" id="profileBtnAuth" type="button">
-              <span class="settings-link-icon">🔑</span>
-              <span class="settings-link-text"><b>Token Akses</b><span class="muted">Keamanan backend</span></span>
-              <span class="settings-link-arrow">›</span>
-            </button>
-            <button class="settings-link" id="profileBtnTheme" type="button">
-              <span class="settings-link-icon">🎨</span>
-              <span class="settings-link-text"><b>Tema Tampilan</b><span class="muted">Dark / Light mode</span></span>
-              <span class="settings-link-arrow">›</span>
-            </button>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-title">Tentang</div>
-          <div class="muted" style="font-size:13px;line-height:1.6;">
-            <b>Keuangan Zulfitrah</b> — Money Tracker Pro v2<br>
-            Personal finance dengan financial intelligence.
-          </div>
-        </div>
-      </section>
-    </div>
-
 </main>
 
   <!-- ── Bottom Navigation ── -->
-  <nav class="bottom-nav" role="tablist" aria-label="Navigasi utama">
-    <a href="#" class="nav-item active" data-tab-target="tab-dashboard" role="tab" aria-selected="true">
+  <nav class="bottom-nav">
+    <a href="#" class="nav-item active" data-tab-target="tab-dashboard">
       <div class="nav-icon">🏠</div>
       <div class="nav-label">Home</div>
     </a>
-    <a href="#" class="nav-item" data-tab-target="tab-analytics" role="tab" aria-selected="false">
+    <a href="#" class="nav-item" data-tab-target="tab-analytics">
       <div class="nav-icon">📊</div>
       <div class="nav-label">Analytics</div>
     </a>
-    <a href="#" class="nav-item" data-tab-target="tab-planning" role="tab" aria-selected="false">
+    <a href="#" class="nav-item" data-tab-target="tab-planning">
       <div class="nav-icon">🎯</div>
       <div class="nav-label">Planning</div>
-    </a>
-    <a href="#" class="nav-item" data-tab-target="tab-profile" role="tab" aria-selected="false">
-      <div class="nav-icon">👤</div>
-      <div class="nav-label">Profile</div>
     </a>
   </nav>
 
@@ -944,6 +900,19 @@
           <div class="form-group">
             <label class="form-label" for="goalNotes">Catatan</label>
             <input type="text" class="form-input" id="goalNotes" placeholder="Opsional…" />
+          </div>
+        </div>
+        <div class="form-row single mb-14" id="goalInflationRow">
+          <label class="form-label" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="goalInflationSensitive" style="width:auto;" />
+            📉 Target ini adalah harga masa depan (naik seiring inflasi)
+          </label>
+          <div class="muted micro-label" style="margin-top:4px;">
+            Centang untuk target seperti DP rumah/kuliah yang harganya sendiri naik — bukan untuk dana darurat (nominal tetap).
+          </div>
+          <div class="form-group" id="goalInflationRateGroup" style="margin-top:8px; display:none;">
+            <label class="form-label" for="goalInflationRate">Asumsi Inflasi / Tahun (%)</label>
+            <input type="number" class="form-input" id="goalInflationRate" min="0" max="20" step="0.5" value="6" />
           </div>
         </div>
         <button class="btn-submit" id="btnSubmitGoal">Simpan Tujuan 🎯</button>
@@ -1364,7 +1333,7 @@
         <div class="muted micro-label" style="margin-bottom:14px;">
           Simulasi pelunasan hutang dengan strategi <b>Snowball</b> (saldo terkecil dulu) vs <b>Avalanche</b> (bunga tertinggi dulu). Pastikan tiap hutang sudah punya minimum payment &amp; bunga (edit dari Daftar Kewajiban).
         </div>
-        <div class="form-row single mb-14">
+        <div class="form-row">
           <div class="form-group">
             <label class="form-label" for="debtPayoffExtra">Extra Payment / Bulan (opsional)</label>
             <div class="amount-input-wrap">
@@ -1372,6 +1341,11 @@
               <input type="text" inputmode="numeric" class="form-input currency-mask" id="debtPayoffExtra" placeholder="0" />
             </div>
             <div class="muted micro-label">Diatas minimum payment. Semakin besar, semakin cepat bebas hutang.</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="debtPayoffInvestReturn">Return Investasi Anda / Tahun (%)</label>
+            <input type="number" class="form-input" id="debtPayoffInvestReturn" min="0" max="50" step="0.5" value="7" />
+            <div class="muted micro-label">Untuk analisis "lunasi vs investasi".</div>
           </div>
         </div>
         <button class="btn-submit" id="btnRunDebtPayoff">🧮 Hitung Simulasi</button>
@@ -1431,7 +1405,7 @@
           <div class="form-group">
             <label class="form-label" for="fireInflation">Asumsi Inflasi (%)</label>
             <input type="number" class="form-input" id="fireInflation" min="0" max="15" step="0.5" value="5" />
-            <div class="muted micro-label">Default 5% (Indonesia). Dipakai untuk hitung return riil.</div>
+            <div class="muted micro-label">Daya beli turun per tahun.</div>
           </div>
         </div>
         <button class="btn-submit" id="btnRunFire">🧮 Hitung FIRE</button>
@@ -1503,7 +1477,13 @@
   <script src="js/api.js" defer></script>
   <script src="js/dialog.js" defer></script>
   <script src="js/charts.js" defer></script>
+  <script src="js/inflation-calculator.js" defer></script>
+  <script src="js/debt-optimizer.js" defer></script>
+  <script src="js/lifestyle-creep-detector.js" defer></script>
+  <script src="js/goals-gamification.js" defer></script>
   <script src="js/app.js" defer></script>
+  <script src="js/tab-navigation.js" defer></script>
+  <script src="js/onboarding-tour.js" defer></script>
 
   <!-- Service Worker (PWA, fail-soft) -->
   <script>
