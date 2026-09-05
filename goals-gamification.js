@@ -17,17 +17,26 @@ class GoalGamification {
   /**
    * Enhance goal data dengan gamification elements
    */
-  enrichGoal(goal, opts = {}) {
-    const percentage = goal.target > 0 ? (goal.saved / goal.target) * 100 : 0;
-    const inflationRate = (opts.inflationRate != null ? opts.inflationRate : 0) / 100;
+  enrichGoal(goal) {
+    // Hitung sisa hari duluan (dipakai untuk proyeksi inflasi target)
     const deadline = new Date(goal.deadline);
     const today = new Date();
     const daysLeft = Math.ceil((deadline - today) / (1000 * 60 * 60 * 24));
     const monthsLeft = Math.max(1, daysLeft / 30);
-    const yearsLeft = monthsLeft / 12;
-    const adjustedTarget = inflationRate > 0 ? goal.target * Math.pow(1 + inflationRate, yearsLeft) : goal.target;
-    const remaining = Math.max(0, adjustedTarget - goal.saved);
-    const monthlyRequired = Math.ceil(remaining / monthsLeft);
+
+    // ── INFLASI ──
+    // Goal yang targetnya adalah harga barang/jasa masa depan (DP rumah,
+    // biaya kuliah) ikut naik seiring waktu — bukan cuma nominal tabungan
+    // yang dikejar tetap. Goal nominal tetap (dana darurat) tidak disentuh
+    // karena basisnya sudah otomatis ikut inflasi lewat pengeluaran terkini.
+    const inflationRate = (goal.inflationRate != null ? goal.inflationRate : 6) / 100;
+    const originalTarget = goal.target;
+    const effectiveTarget = goal.inflationSensitive
+      ? goal.target * Math.pow(1 + inflationRate, monthsLeft / 12)
+      : goal.target;
+
+    const percentage = effectiveTarget > 0 ? (goal.saved / effectiveTarget) * 100 : 0;
+    const monthlyRequired = Math.ceil((effectiveTarget - goal.saved) / monthsLeft);
     
     // Determine active milestones
     const activeMilestones = this.milestones
@@ -76,15 +85,19 @@ class GoalGamification {
       monthsLeft: Math.round(monthsLeft),
       monthlyRequired: monthlyRequired,
       monthlyRequiredFormatted: this.fmtRp(monthlyRequired),
-      inflationAdjusted: inflationRate > 0,
-      adjustedTarget: Math.round(adjustedTarget),
       activeMilestones: activeMilestones,
       nextMilestone: activeMilestones.find(m => !m.achieved),
       urgency: urgency,
       urgencyIcon: urgencyIcon,
       isOnTrack: isOnTrack,
       statusMessage: statusMessage,
-      shouldPulse: urgency === 'critical' || urgency === 'high'
+      shouldPulse: urgency === 'critical' || urgency === 'high',
+      // Inflasi — dipakai UI untuk tampilkan "Target awal Rp30jt → Rp38jt (inflasi 6%)"
+      originalTarget: originalTarget,
+      effectiveTarget: Math.round(effectiveTarget),
+      inflationAdjustedNote: goal.inflationSensitive
+        ? `Target awal ${this.fmtRp(originalTarget)} → disesuaikan inflasi ${(inflationRate*100).toFixed(0)}%/thn jadi ${this.fmtRp(effectiveTarget)} dalam ${Math.round(monthsLeft)} bulan.`
+        : null
     };
   }
   
