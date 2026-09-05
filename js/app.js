@@ -157,7 +157,26 @@
     setupCurrencyMasks();
     setupFab();
     setupSearch();
-    setupBottomNav();
+    // Delay sedikit agar DOM tab sudah siap di mobile WebView
+    try { setupBottomNav(); } catch (e) { console.error(e); }
+    // Safety net: pastikan minimal dashboard terlihat setelah 100ms
+    setTimeout(function () {
+      var active = document.querySelector('.main-tab.active');
+      if (!active) {
+        var dash = document.getElementById('tab-dashboard');
+        if (dash) {
+          dash.removeAttribute('hidden');
+          dash.classList.add('active');
+          dash.style.display = 'block';
+        }
+      }
+      // Pastikan loading overlay tidak menggantung
+      var ov = document.getElementById('loadingOverlay');
+      if (ov) {
+        ov.classList.add('hidden');
+        ov.setAttribute('aria-hidden', 'true');
+      }
+    }, 150);
 
     // Load kategori dari cache lokal dulu (instan), lalu fetch terbaru di background
     const cachedCats = store.getCachedCategories();
@@ -452,23 +471,47 @@
     const LS_LAST_TAB = 'mtpro_last_tab';
 
     function switchToTab(tabId) {
-      document.querySelectorAll('.main-tab').forEach(t => {
-        t.classList.remove('active');
-        t.hidden = true;
-      });
-      const target = document.getElementById(tabId);
-      if (target) {
-        target.hidden = false;
-        void target.offsetWidth;
-        target.classList.add('active');
+      try {
+        const tabs = document.querySelectorAll('.main-tab');
+        let target = document.getElementById(tabId);
+        // Fallback ke dashboard kalau target tidak ada
+        if (!target) {
+          tabId = 'tab-dashboard';
+          target = document.getElementById(tabId);
+        }
+        tabs.forEach(t => {
+          t.classList.remove('active');
+          t.setAttribute('hidden', '');
+        });
+        if (target) {
+          target.removeAttribute('hidden');
+          target.hidden = false;
+          target.classList.add('active');
+          // Paksa visible (beberapa WebView mobile bandel)
+          target.style.display = 'block';
+        }
+        // Pastikan tab lain benar-benar tersembunyi
+        tabs.forEach(t => {
+          if (t !== target) {
+            t.style.display = '';
+          }
+        });
+        nav.querySelectorAll('.nav-item').forEach(item => {
+          const isActive = item.dataset.tabTarget === tabId;
+          item.classList.toggle('active', isActive);
+          item.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+        try { localStorage.setItem(LS_LAST_TAB, tabId); } catch (e) {}
+      } catch (err) {
+        // Jangan pernah biarkan layar blank
+        console.error('switchToTab error', err);
+        const dash = document.getElementById('tab-dashboard');
+        if (dash) {
+          dash.removeAttribute('hidden');
+          dash.classList.add('active');
+          dash.style.display = 'block';
+        }
       }
-      nav.querySelectorAll('.nav-item').forEach(item => {
-        const isActive = item.dataset.tabTarget === tabId;
-        item.classList.toggle('active', isActive);
-        item.setAttribute('aria-selected', isActive ? 'true' : 'false');
-      });
-      try { localStorage.setItem(LS_LAST_TAB, tabId); } catch (e) {}
-      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     nav.querySelectorAll('.nav-item').forEach(item => {
@@ -501,7 +544,8 @@
   //  ONBOARDING
   // ────────────────────────────────────────────────────────────────
   function setupOnboarding() {
-    closeModal('onboardingOverlay');
+    try { closeModal('onboardingOverlay'); } catch (e) {}
+    try {
     const steps = [
       { target: '#fab', title: 'Mulai dari sini', body: 'Tombol + ini cara tercepat mencatat pemasukan, pengeluaran, atau tabungan.', placement: 'top' },
       { target: '#summaryGrid', title: 'Ringkasan Keuangan', body: 'Lihat pemasukan, pengeluaran, dan sisa saldo bulan ini. Panah membandingkan dengan bulan lalu.', placement: 'bottom' },
@@ -511,6 +555,7 @@
     const valid = steps.filter(s => document.querySelector(s.target));
     if (!valid.length) { store.setOnboarded(); return; }
     startGuidedTour(valid);
+    } catch (e) { console.error('onboarding', e); store.setOnboarded(); }
   }
 
   function startGuidedTour(steps) {
