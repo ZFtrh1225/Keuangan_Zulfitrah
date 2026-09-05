@@ -123,6 +123,35 @@
     return '<p>' + html + '</p>';
   }
 
+  /**
+   * Animasikan angka dari `from` ke `to` di dalam elemen, format Rupiah.
+   * Dipakai untuk sentuhan "Dynamic Premium Aesthetics" — angka ringkasan
+   * yang bertambah smooth alih-alih langsung loncat, tanpa library eksternal.
+   * Menghormati prefers-reduced-motion (langsung set nilai akhir).
+   */
+  function animateCountUp(el, from, to, duration = 700) {
+    if (!el) return;
+    const prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReduced || Math.abs(to - from) < 1) {
+      el.textContent = fmtRp(to);
+      return;
+    }
+    el.classList.add('count-up', 'is-animating');
+    const start = performance.now();
+    function tick(now) {
+      const p = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - p, 3); // ease-out cubic
+      el.textContent = fmtRp(from + (to - from) * eased);
+      if (p < 1) {
+        requestAnimationFrame(tick);
+      } else {
+        el.textContent = fmtRp(to);
+        el.classList.remove('is-animating');
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+
   /** Debounce */
   function debounce(fn, ms) {
     let t = null;
@@ -136,6 +165,6 @@
   MT.fmt = {
     fmtRp, fmtRpShort, parseRp, applyCurrencyMask,
     fmtDateShort, fmtDateLong, fmtPct, toIsoDate,
-    daysFromToday, escapeHtml, mdToHtml, debounce
+    daysFromToday, escapeHtml, mdToHtml, debounce, animateCountUp
   };
 })();
