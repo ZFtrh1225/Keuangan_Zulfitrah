@@ -106,6 +106,24 @@
     el.classList.toggle('hidden', !show);
     el.setAttribute('aria-hidden', String(!show));
   }
+  function animateValue(el, target, formatter, duration = 700) {
+    if (!el) return;
+    const start = 0;
+    const startTime = performance.now();
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || Math.abs(target) < 1) {
+      el.textContent = formatter(target);
+      return;
+    }
+    function tick(now) {
+      const t = Math.min(1, (now - startTime) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      el.textContent = formatter(start + (target - start) * eased);
+      if (t < 1) requestAnimationFrame(tick);
+      else el.textContent = formatter(target);
+    }
+    requestAnimationFrame(tick);
+  }
+
   function showToast(msg, type = 'info') {
     const el = $('toast');
     if (!el) return;
@@ -139,6 +157,7 @@
     setupCurrencyMasks();
     setupFab();
     setupSearch();
+    setupBottomNav();
 
     // Load kategori dari cache lokal dulu (instan), lalu fetch terbaru di background
     const cachedCats = store.getCachedCategories();
@@ -149,7 +168,6 @@
     loadCategories(); // refresh non-blocking
 
     if (!store.isOnboarded()) {
-      openModal('onboardingOverlay');
       setupOnboarding();
     }
 
@@ -424,6 +442,52 @@
     });
   }
 
+
+  // ────────────────────────────────────────────────────────────────
+  //  BOTTOM NAVIGATION + TAB SWITCHING
+  // ────────────────────────────────────────────────────────────────
+  function setupBottomNav() {
+    const nav = document.querySelector('.bottom-nav');
+    if (!nav) return;
+    const LS_LAST_TAB = 'mtpro_last_tab';
+
+    function switchToTab(tabId) {
+      document.querySelectorAll('.main-tab').forEach(t => {
+        t.classList.remove('active');
+        t.hidden = true;
+      });
+      const target = document.getElementById(tabId);
+      if (target) {
+        target.hidden = false;
+        void target.offsetWidth;
+        target.classList.add('active');
+      }
+      nav.querySelectorAll('.nav-item').forEach(item => {
+        const isActive = item.dataset.tabTarget === tabId;
+        item.classList.toggle('active', isActive);
+        item.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
+      try { localStorage.setItem(LS_LAST_TAB, tabId); } catch (e) {}
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    nav.querySelectorAll('.nav-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (item.dataset.tabTarget) switchToTab(item.dataset.tabTarget);
+      });
+    });
+
+    let initial = 'tab-dashboard';
+    try {
+      const saved = localStorage.getItem(LS_LAST_TAB);
+      if (saved && document.getElementById(saved)) initial = saved;
+    } catch (e) {}
+    switchToTab(initial);
+    window.MT = window.MT || {};
+    MT.switchTab = switchToTab;
+  }
+
   // ────────────────────────────────────────────────────────────────
   //  SEARCH
   // ────────────────────────────────────────────────────────────────
@@ -437,31 +501,76 @@
   //  ONBOARDING
   // ────────────────────────────────────────────────────────────────
   function setupOnboarding() {
-    let step = 1;
-    const next = $('btnOnbNext');
-    const skip = $('btnOnbSkip');
+    closeModal('onboardingOverlay');
+    const steps = [
+      { target: '#fab', title: 'Mulai dari sini', body: 'Tombol + ini cara tercepat mencatat pemasukan, pengeluaran, atau tabungan.', placement: 'top' },
+      { target: '#summaryGrid', title: 'Ringkasan Keuangan', body: 'Lihat pemasukan, pengeluaran, dan sisa saldo bulan ini. Panah membandingkan dengan bulan lalu.', placement: 'bottom' },
+      { target: '.bottom-nav', title: 'Navigasi Utama', body: 'Home = ringkasan. Analytics = grafik & insight. Planning = budget, goals, FIRE. Profile = pengaturan.', placement: 'top' },
+      { target: '#btnWealth', title: 'Aset & Hutang', body: 'Catat aset dan kewajiban agar Net Worth, Dana Darurat, dan DSR akurat.', placement: 'bottom' }
+    ];
+    const valid = steps.filter(s => document.querySelector(s.target));
+    if (!valid.length) { store.setOnboarded(); return; }
+    startGuidedTour(valid);
+  }
 
-    function show(n) {
-      document.querySelectorAll('.onb-step').forEach(s => s.classList.remove('active'));
-      const cur = document.querySelector('.onb-step[data-step="' + n + '"]');
-      if (cur) cur.classList.add('active');
-      next.textContent = n === 3 ? '🚀 Mulai!' : 'Lanjut →';
+  function startGuidedTour(steps) {
+    let host = document.getElementById('tourHost');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'tourHost';
+      host.className = 'tour-host';
+      document.body.appendChild(host);
     }
-
-    next.addEventListener('click', () => {
-      if (step === 3) {
-        store.setOnboarded();
-        closeModal('onboardingOverlay');
+    function cleanup() {
+      host.classList.remove('open');
+      host.innerHTML = '';
+      document.querySelectorAll('.tour-highlight').forEach(el => el.classList.remove('tour-highlight'));
+      store.setOnboarded();
+    }
+    function showStep(i) {
+      if (i >= steps.length) {
+        cleanup();
+        showToast('Siap! Mulai catat transaksi pertamamu 🚀', 'success');
         return;
       }
-      step++;
-      show(step);
-    });
-    skip.addEventListener('click', () => {
-      store.setOnboarded();
-      closeModal('onboardingOverlay');
-    });
-    show(step);
+      const step = steps[i];
+      const target = document.querySelector(step.target);
+      if (!target) { showStep(i + 1); return; }
+      document.querySelectorAll('.tour-highlight').forEach(el => el.classList.remove('tour-highlight'));
+      target.classList.add('tour-highlight');
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const rect = target.getBoundingClientRect();
+      const pad = 8;
+      const spotTop = rect.top + window.scrollY - pad;
+      const spotLeft = rect.left + window.scrollX - pad;
+      const spotW = rect.width + pad * 2;
+      const spotH = rect.height + pad * 2;
+      const tipW = 300;
+      let tipTop = step.placement === 'top' ? spotTop - 12 : spotTop + spotH + 12;
+      let tipLeft = Math.max(12, Math.min(window.innerWidth - tipW - 12, spotLeft + spotW / 2 - tipW / 2));
+      const isLast = i === steps.length - 1;
+      host.innerHTML = `
+        <div class="tour-backdrop"></div>
+        <div class="tour-spotlight" style="top:${spotTop}px;left:${spotLeft}px;width:${spotW}px;height:${spotH}px;"></div>
+        <div class="tour-tooltip" style="top:${tipTop}px;left:${tipLeft}px;width:${tipW}px;">
+          <div class="tour-step-count">${i + 1} / ${steps.length}</div>
+          <div class="tour-title">${escapeHtml(step.title)}</div>
+          <div class="tour-body">${escapeHtml(step.body)}</div>
+          <div class="tour-actions">
+            <button type="button" class="tour-btn tour-skip">Lewati</button>
+            <button type="button" class="tour-btn tour-next primary">${isLast ? 'Selesai 🚀' : 'Lanjut →'}</button>
+          </div>
+        </div>`;
+      host.classList.add('open');
+      if (step.placement === 'top') {
+        const tip = host.querySelector('.tour-tooltip');
+        if (tip) tip.style.top = (spotTop - tip.offsetHeight - 12) + 'px';
+      }
+      host.querySelector('.tour-skip').onclick = cleanup;
+      host.querySelector('.tour-next').onclick = () => showStep(i + 1);
+      host.querySelector('.tour-backdrop').onclick = cleanup;
+    }
+    setTimeout(() => showStep(0), 400);
   }
 
   // ────────────────────────────────────────────────────────────────
@@ -532,6 +641,7 @@
     renderStreak(d.streak || null);
     renderCalendar(d.calendar || null);
     renderEnvelopeBudgets(d.categoryBudgets || []);
+    renderLifestyleCreep(d);
   }
 
   // ── Summary ──
@@ -574,14 +684,14 @@
       el.textContent = (Math.abs(d) < 1 ? '— ' : isUp ? '▲ ' : '▼ ') + fmtRpShort(Math.abs(d));
     };
 
-    $('valIncome').textContent = fmtRp(s.totalInc);
-    $('valExpense').textContent = fmtRp(s.totalExp);
+    animateValue($('valIncome'), s.totalInc || 0, fmtRp);
+    animateValue($('valExpense'), s.totalExp || 0, fmtRp);
     const balEl = $('valBalance');
-    balEl.textContent = fmtRp(s.balance);
-    balEl.classList.toggle('negative', s.balance < 0);
-    $('valSaving').textContent = fmtRp(s.totalSav);
-    $('valSavingsRate').textContent = (s.savingsRate || 0).toFixed(1) + '%';
-    $('valTx').textContent = s.totalTx;
+    animateValue(balEl, s.balance || 0, fmtRp);
+    balEl.classList.toggle('negative', (s.balance || 0) < 0);
+    animateValue($('valSaving'), s.totalSav || 0, fmtRp);
+    animateValue($('valSavingsRate'), s.savingsRate || 0, n => n.toFixed(1) + '%', 500);
+    animateValue($('valTx'), s.totalTx || 0, n => String(Math.round(n)), 400);
 
     setCmpRatio('cmpIncome',  s.totalInc, s.pTotalInc,  false);
     setCmpRatio('cmpExpense', s.totalExp, s.pTotalExp,  true);
@@ -1871,6 +1981,59 @@
     }).join('');
   }
 
+
+  function renderLifestyleCreep(d) {
+    const el = $('lifestyleCreepAlert');
+    const msgEl = $('lifestyleCreepMsg');
+    if (!el || !msgEl) return;
+    const months = (d.sixMonths || []).filter(m => m.income > 0 || m.expenses > 0);
+    if (months.length < 3) { el.hidden = true; return; }
+    const recent = months.slice(-3);
+    const older = months.slice(0, Math.min(3, months.length - 3));
+    if (!older.length) { el.hidden = true; return; }
+    const avg = (arr, key) => arr.reduce((s, m) => s + (m[key] || 0), 0) / arr.length;
+    const recentIncome = avg(recent, 'income');
+    const olderIncome = avg(older, 'income');
+    const recentWants = avg(recent, 'wants');
+    const olderWants = avg(older, 'wants');
+    const recentSav = avg(recent, 'savings');
+    const olderSav = avg(older, 'savings');
+    if (olderIncome < 1000) { el.hidden = true; return; }
+    const incomeGrowth = ((recentIncome - olderIncome) / olderIncome) * 100;
+    const wantsGrowth = olderWants > 0 ? ((recentWants - olderWants) / olderWants) * 100 : (recentWants > 0 ? 100 : 0);
+    const incomeDelta = recentIncome - olderIncome;
+    const savDelta = recentSav - olderSav;
+    let captureRate = null;
+    if (incomeDelta > 0) captureRate = Math.max(0, Math.min(100, (savDelta / incomeDelta) * 100));
+    let level = 'ok', title = '', message = '';
+    if (incomeGrowth > 5 && wantsGrowth > incomeGrowth + 5) {
+      level = 'critical';
+      title = 'Peringatan: Lifestyle Creep Terdeteksi';
+      message = `Pemasukan naik ${incomeGrowth.toFixed(0)}%, tapi pengeluaran Keinginan naik ${wantsGrowth.toFixed(0)}%. ` +
+        (captureRate != null ? `Hanya ${captureRate.toFixed(0)}% dari kenaikan income yang berhasil ditabung.` : 'Hampir tidak ada tambahan tabungan dari kenaikan income.');
+    } else if (incomeGrowth > 5 && captureRate != null && captureRate < 40) {
+      level = 'warning';
+      title = 'Lifestyle Creep Ringan';
+      message = `Pemasukan naik ${incomeGrowth.toFixed(0)}%, tapi hanya ${captureRate.toFixed(0)}% yang ditabung. Target ideal: 50–75% dari setiap kenaikan income.`;
+    } else if (incomeGrowth > 5 && captureRate != null && captureRate >= 75) {
+      level = 'excellent';
+      title = 'Excellent: Mengalahkan Lifestyle Creep';
+      message = `Pemasukan naik ${incomeGrowth.toFixed(0)}% dan ${captureRate.toFixed(0)}% di antaranya ditabung. Sesuai 75% rule — teruskan!`;
+    } else {
+      el.hidden = true;
+      return;
+    }
+    el.hidden = false;
+    el.style.borderColor = level === 'critical' ? 'var(--red)' : level === 'warning' ? 'var(--amber)' : 'var(--green)';
+    el.style.background = level === 'critical' ? 'var(--rdim)' : level === 'warning' ? 'var(--adm)' : 'var(--gdim)';
+    const titleEl = el.querySelector('div[style*="font-weight"]');
+    if (titleEl) {
+      titleEl.textContent = (level === 'critical' ? '⚠️ ' : level === 'excellent' ? '🟢 ' : '⚡ ') + title;
+      titleEl.style.color = level === 'critical' ? 'var(--red)' : level === 'warning' ? 'var(--amber)' : 'var(--green)';
+    }
+    msgEl.textContent = message;
+  }
+
   function openCatBudgetModal() {
     const cats = state.categories || [];
     const budgets = (state.settings && state.settings.categoryBudgets) || {};
@@ -2655,7 +2818,7 @@
   async function runDebtPayoff() {
     const extra = parseRp($('debtPayoffExtra').value);
     await submitWithGuard(async () => {
-      const res = await api.calculateDebtPayoff({ extraPayment: extra, strategy: 'both' });
+      const res = await api.calculateDebtPayoff({ extraPayment: extra, strategy: 'both', assumedInvestReturn: 7 });
       if (!res.success) return showToast('Gagal: ' + res.error, 'error');
       if (!res.strategies || (!res.strategies.snowball && !res.strategies.avalanche)) {
         $('debtPayoffResult').hidden = false;
@@ -2664,6 +2827,8 @@
       }
       const s = res.strategies.snowball;
       const a = res.strategies.avalanche;
+      const cod = res.costOfDebt || {};
+      const adviceClass = cod.adviceLevel === 'critical' ? 'dp-advice-critical' : cod.adviceLevel === 'warning' ? 'dp-advice-warning' : 'dp-advice-ok';
       $('debtPayoffResult').hidden = false;
       $('debtPayoffResult').innerHTML = `
         <div class="dp-summary">
@@ -2671,6 +2836,16 @@
           <div><b>Total min payment:</b> ${fmtRp(res.totalMinPayment)}/bln</div>
           <div><b>Extra payment:</b> ${fmtRp(extra)}/bln</div>
         </div>
+        ${cod.advice ? `
+        <div class="dp-cost-of-debt ${adviceClass}">
+          <div class="dp-cod-title">💡 Analisis Biaya Utang vs Investasi</div>
+          <div class="dp-cod-stats">
+            <span>Bunga utang rata-rata: <b>${escapeHtml(cod.weightedAvgInterestPct || '0')}%</b></span>
+            <span>Asumsi return investasi: <b>${escapeHtml(cod.assumedInvestReturnPct || '7')}%</b></span>
+            ${cod.highestRateName ? `<span>Utang termahal: <b>${escapeHtml(cod.highestRateName)} (${escapeHtml(cod.highestRatePct)}%)</b></span>` : ''}
+          </div>
+          <div class="dp-cod-advice">${escapeHtml(cod.advice)}</div>
+        </div>` : ''}
         <div class="dp-strategies">
           <div class="dp-card">
             <div class="dp-title">❄️ Snowball</div>
@@ -2706,18 +2881,21 @@
     $('fireCurrent').value = invest ? invest.toLocaleString('id-ID') : '';
     $('fireReturn').value = '7';
     $('fireWithdrawal').value = '4';
+    if ($('fireInflation')) $('fireInflation').value = '5';
     $('fireResult').hidden = true;
     setupCurrencyMasks();
     openModal('fireModalOverlay');
   }
 
   async function runFireProjection() {
+    const inflationRate = parseFloat($('fireInflation') ? $('fireInflation').value : 5) || 5;
     const data = {
       monthlyExpense: parseRp($('fireMonthlyExp').value),
       monthlyContribution: parseRp($('fireMonthlyContrib').value),
       currentInvestment: parseRp($('fireCurrent').value),
       returnRate: parseFloat($('fireReturn').value) || 7,
-      withdrawalRate: parseFloat($('fireWithdrawal').value) || 4
+      withdrawalRate: parseFloat($('fireWithdrawal').value) || 4,
+      inflationRate: inflationRate
     };
     if (data.monthlyExpense <= 0) return showToast('Isi pengeluaran bulanan dulu', 'error');
     await submitWithGuard(async () => {
@@ -2726,17 +2904,20 @@
       const result = $('fireResult');
       result.hidden = false;
       const reach = res.yearsToFire != null;
+      const realRetPct = res.realReturn != null ? (res.realReturn * 100).toFixed(2) : '—';
       result.innerHTML = `
         <div class="fire-summary">
-          <div><span>Target FIRE (${(data.withdrawalRate)}% rule):</span> <b>${fmtRp(res.fireNumber)}</b></div>
+          <div><span>Target FIRE (daya beli hari ini):</span> <b>${fmtRp(res.fireNumber)}</b></div>
           <div><span>Pengeluaran tahunan:</span> ${fmtRp(res.annualExpense)}</div>
+          <div><span>Return nominal → riil:</span> <b>${data.returnRate}% → ${realRetPct}%</b> <span class="muted">(setelah inflasi ${inflationRate}%)</span></div>
           ${reach
             ? `<div class="fire-reach"><span>🎯 Tercapai dalam:</span> <b>${res.yearsToFire.toFixed(1)} tahun</b></div>`
-            : `<div class="fire-warn">⚠️ Butuh > 50 tahun. Tingkatkan kontribusi atau diversifikasi instrumen.</div>`}
-          ${res.coastYears ? `<div><span>Coast FIRE (kalau berhenti kontribusi sekarang):</span> <b>${res.coastYears.toFixed(1)} tahun</b></div>` : ''}
+            : `<div class="fire-warn">⚠️ Butuh > 50 tahun dengan asumsi saat ini.</div>`}
+          ${res.futureNominalFireNumber ? `<div><span>Nilai nominal setara di masa depan:</span> <b>${fmtRp(res.futureNominalFireNumber)}</b></div>` : ''}
+          ${res.coastYears ? `<div><span>Coast FIRE (stop kontribusi sekarang):</span> <b>${res.coastYears.toFixed(1)} tahun</b></div>` : ''}
         </div>
         <div class="fire-summary-text">${escapeHtml(res.summary || '')}</div>
-        <div class="fire-tl-head">📈 Proyeksi modal per tahun</div>
+        <div class="fire-tl-head">📈 Proyeksi modal (daya beli hari ini)</div>
         <div class="fire-timeline">
           ${(res.timeline || []).slice(0, 30).map(t => `
             <div class="fire-tl-row">
@@ -2797,6 +2978,13 @@
     setupReceiptInput();
 
     const wire = (id, fn) => { const el = $(id); if (el) el.addEventListener('click', fn); };
+
+    // Profile tab quick actions
+    wire('profileBtnSettings', () => openSettings());
+    wire('profileBtnWallets', () => openWalletsModal());
+    wire('profileBtnAuth', () => openAuthModal());
+    wire('profileBtnTheme', () => { const btn = $('btnTheme'); if (btn) btn.click(); });
+    wire('profileBtnPdf', () => { const btn = $('btnPdf'); if (btn) btn.click(); });
 
     // Header buttons baru
     wire('btnTransfer', openTransferModal);
