@@ -145,20 +145,43 @@
   function init() {
     setupProfileTab();
 
-    document.querySelectorAll('.bottom-nav .nav-item').forEach(item => {
+    const navItems = document.querySelectorAll('.bottom-nav .nav-item');
+    const panels = getPanels();
+
+    // Defensive check — kalau markup berubah (refactor CSS/HTML di kemudian
+    // hari), gagal DIAM-DIAM itu yang paling menyesatkan untuk di-debug.
+    // Console warning ini akan langsung kelihatan di DevTools kalau tab
+    // bar tidak berfungsi, alih-alih user cuma lihat "tidak ada reaksi".
+    if (!navItems.length) {
+      console.warn('[tab-navigation] Tidak ada .bottom-nav .nav-item ditemukan — cek apakah class berubah.');
+    }
+    if (!panels.length) {
+      console.warn('[tab-navigation] Tidak ada .main-tab ditemukan — cek apakah struktur #tab-dashboard/#tab-analytics/#tab-planning berubah.');
+      return;
+    }
+
+    navItems.forEach(item => {
       item.setAttribute('role', 'tab');
       item.addEventListener('click', (e) => {
         e.preventDefault();
         const target = item.dataset.tabTarget;
-        if (target) activateTab(target);
+        if (!target) {
+          console.warn('[tab-navigation] nav-item tanpa data-tab-target:', item);
+          return;
+        }
+        if (!document.getElementById(target)) {
+          console.warn('[tab-navigation] Target tab tidak ditemukan di DOM:', target);
+          return;
+        }
+        activateTab(target);
       });
     });
 
     // Restore tab terakhir (kalau ada), fallback ke dashboard
     let restored = null;
     try { restored = sessionStorage.getItem(SS_KEY); } catch (e) { /* noop */ }
-    const validIds = getPanels().map(p => p.id);
-    activateTab(validIds.includes(restored) ? restored : 'tab-dashboard', { skipChartRefresh: true });
+    const validIds = panels.map(p => p.id);
+    activateTab(validIds.includes(restored) ? restored : (validIds[0] || 'tab-dashboard'), { skipChartRefresh: true });
   }
 
   if (document.readyState === 'loading') {
