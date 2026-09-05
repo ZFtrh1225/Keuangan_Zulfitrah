@@ -17,17 +17,17 @@ class GoalGamification {
   /**
    * Enhance goal data dengan gamification elements
    */
-  enrichGoal(goal) {
+  enrichGoal(goal, opts = {}) {
     const percentage = goal.target > 0 ? (goal.saved / goal.target) * 100 : 0;
-    
-    // Hitung sisa hari
+    const inflationRate = (opts.inflationRate != null ? opts.inflationRate : 0) / 100;
     const deadline = new Date(goal.deadline);
     const today = new Date();
     const daysLeft = Math.ceil((deadline - today) / (1000 * 60 * 60 * 24));
-    
-    // Monthly requirement
     const monthsLeft = Math.max(1, daysLeft / 30);
-    const monthlyRequired = Math.ceil((goal.target - goal.saved) / monthsLeft);
+    const yearsLeft = monthsLeft / 12;
+    const adjustedTarget = inflationRate > 0 ? goal.target * Math.pow(1 + inflationRate, yearsLeft) : goal.target;
+    const remaining = Math.max(0, adjustedTarget - goal.saved);
+    const monthlyRequired = Math.ceil(remaining / monthsLeft);
     
     // Determine active milestones
     const activeMilestones = this.milestones
@@ -76,6 +76,8 @@ class GoalGamification {
       monthsLeft: Math.round(monthsLeft),
       monthlyRequired: monthlyRequired,
       monthlyRequiredFormatted: this.fmtRp(monthlyRequired),
+      inflationAdjusted: inflationRate > 0,
+      adjustedTarget: Math.round(adjustedTarget),
       activeMilestones: activeMilestones,
       nextMilestone: activeMilestones.find(m => !m.achieved),
       urgency: urgency,
