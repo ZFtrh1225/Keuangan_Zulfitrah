@@ -1,6 +1,6 @@
 {
-  "name": "Money Tracker Pro",
-  "short_name": "Money Pro",
+  "name": "Keuangan Zulfitrah",
+  "short_name": "Keuangan Zulfitrah",
   "description": "Aplikasi pencatat keuangan personal dengan financial intelligence",
   "start_url": "./index.html",
   "scope": "./",
