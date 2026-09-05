@@ -16,7 +16,14 @@ const STATIC_ASSETS = [
   './js/state.js',
   './js/api.js',
   './js/charts.js',
-  './js/app.js'
+  './js/dialog.js',
+  './js/goals-gamification.js',
+  './js/inflation-calculator.js',
+  './js/debt-optimizer.js',
+  './js/lifestyle-creep-detector.js',
+  './js/app.js',
+  './js/tab-navigation.js',
+  './js/onboarding-tour.js'
 ];
 
 self.addEventListener('install', (event) => {
