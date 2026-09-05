@@ -39,6 +39,15 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) =>
       Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
+     .then(() => {
+       // Beri tahu semua tab/PWA yang sedang terbuka bahwa versi baru sudah
+       // aktif — tanpa ini, PWA yang ter-install di HP bisa terus menyajikan
+       // shell lama (index.html/app.js/tab-navigation.js versi sebelumnya)
+       // sampai user manual force-close & buka ulang aplikasinya.
+       return self.clients.matchAll({ type: 'window' }).then(clients => {
+         clients.forEach(client => client.postMessage({ type: 'MTPRO_SW_UPDATED', cache: CACHE_NAME }));
+       });
+     })
   );
 });
 
