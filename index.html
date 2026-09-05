@@ -67,7 +67,8 @@
 
   <main>
 
-    <!-- ═══════════════ Summary Hero ═══════════════ -->
+    <div id="tab-dashboard" class="main-tab active">
+<!-- ═══════════════ Summary Hero ═══════════════ -->
     <section class="fadeUp">
       <div class="summary-grid" id="summaryGrid">
         <div class="summary-card income">
@@ -126,8 +127,7 @@
         </div>
       </div>
     </section>
-
-    <!-- ═══════════════ Wallet Overview ═══════════════ -->
+<!-- ═══════════════ Wallet Overview ═══════════════ -->
     <section class="fadeUp">
       <div class="section-title">👛 Saldo Per Dompet</div>
       <div class="wallet-grid" id="walletGrid">
@@ -137,8 +137,47 @@
         <div class="skeleton skeleton-card"></div>
       </div>
     </section>
+<!-- ═══════════════ Recent Transactions ═══════════════ -->
+    <section class="fadeUp">
+      <div class="section-title">
+        <span>📜 Transaksi Bulan Ini</span>
+        <input type="search" class="search-input" id="txSearch" placeholder="🔍 Cari…" aria-label="Cari transaksi" />
+      </div>
+      <div class="card" style="padding:0;overflow:hidden;">
+        <div id="txListWrap">
+          <table class="tx-table">
+            <thead>
+              <tr>
+                <th>Tanggal</th>
+                <th>Jenis</th>
+                <th>Deskripsi</th>
+                <th>Sumber</th>
+                <th class="ta-right">Jumlah</th>
+                <th class="ta-right">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="txTableBody">
+              <tr><td colspan="6" class="empty-cell">Memuat…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+    </div>
+    
 
-    <!-- ═══════════════ Daily Chart + AI ═══════════════ -->
+    <div id="tab-analytics" class="main-tab" hidden>
+      <!-- Lifestyle Creep Alert -->
+      <div id="lifestyleCreepAlert" class="card" hidden style="margin-bottom: 28px; border-color: var(--amber); background: var(--adm);">
+        <div style="display:flex; gap:12px; align-items:center;">
+          <div style="font-size:24px;">⚠️</div>
+          <div>
+            <div style="font-weight:700; color:var(--amber);">Peringatan: Lifestyle Creep Terdeteksi</div>
+            <div style="font-size:12px; color:var(--t2); margin-top:4px;" id="lifestyleCreepMsg"></div>
+          </div>
+        </div>
+      </div>
+<!-- ═══════════════ Daily Chart + AI ═══════════════ -->
     <section class="fadeUp">
       <div class="section-title">📈 Analisis Harian & AI Insight</div>
       <div class="charts-row">
@@ -172,8 +211,7 @@
         </div>
       </div>
     </section>
-
-    <!-- ═══════════════ Analysis Detail ═══════════════ -->
+<!-- ═══════════════ Analysis Detail ═══════════════ -->
     <section class="fadeUp">
       <div class="section-title">🔍 Analisis Pengeluaran Detail</div>
       <div class="analysis-grid">
@@ -218,8 +256,36 @@
         </div>
       </div>
     </section>
+<!-- ═══════════════ 6 Months History ═══════════════ -->
+    <section class="fadeUp">
+      <div class="section-title">📅 Keuangan 6 Bulan Terakhir</div>
+      <div class="card" style="padding:0;overflow:hidden;">
+        <div class="table-scroll">
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th>Bulan</th>
+                <th>Pemasukan</th>
+                <th>Pengeluaran</th>
+                <th>Tabungan</th>
+                <th>Sisa Saldo</th>
+                <th>SR%</th>
+                <th>Tx</th>
+                <th>Proporsi</th>
+              </tr>
+            </thead>
+            <tbody id="sixMonthsBody">
+              <tr><td colspan="8" class="empty-cell">Memuat data…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+    </div>
+    
 
-    <!-- ═══════════════ Budgeting ═══════════════ -->
+    <div id="tab-planning" class="main-tab" hidden>
+<!-- ═══════════════ Budgeting ═══════════════ -->
     <section class="fadeUp">
       <div class="section-title">
         <span>🎯 Anggaran <span id="budgetRuleLbl">50/30/20</span> — Rencana vs Realita</span>
@@ -278,8 +344,22 @@
         </div>
       </div>
     </section>
-
-    <!-- ═══════════════ Net Worth & Ratios ═══════════════ -->
+<!-- ═══════════════ Plafon Kategori (Envelope Budget) ═══════════════ -->
+    <section class="fadeUp">
+      <div class="section-title">
+        <span>📦 Plafon Kategori <span class="term-en">(Envelope Budgeting)</span></span>
+        <button class="btn-pill" id="btnEditCatBudgets" aria-label="Atur plafon kategori">⚙️ Atur Plafon</button>
+      </div>
+      <div class="card">
+        <div id="catBudgetList">
+          <div class="empty-state">
+            <div class="empty-state-icon">📦</div>
+            Belum ada plafon kategori. Klik <b>Atur Plafon</b> untuk set limit per kategori (mis. Hiburan Rp 200rb/bulan).
+          </div>
+        </div>
+      </div>
+    </section>
+<!-- ═══════════════ Net Worth & Ratios ═══════════════ -->
     <section class="fadeUp">
       <div class="section-title">⚖️ Neraca Kekayaan & Rasio Kesehatan</div>
 
@@ -363,8 +443,23 @@
         </div>
       </div>
     </section>
-
-    <!-- ═══════════════ Cashflow Forecast & Burn Rate ═══════════════ -->
+<!-- ═══════════════ Goals ═══════════════ -->
+    <section class="fadeUp">
+      <div class="section-title">
+        <span>🎯 Tujuan Keuangan</span>
+        <button class="btn-pill" id="btnAddGoal">+ Tambah Tujuan</button>
+      </div>
+      <div class="goals-grid" id="goalsGrid">
+        <div class="empty-state">
+          <div class="empty-state-icon">🎯</div>
+          Belum ada tujuan keuangan
+          <div class="empty-cta">
+            <button class="btn btn-primary btn-sm" id="btnAddGoalEmpty">+ Buat Tujuan Pertama</button>
+          </div>
+        </div>
+      </div>
+    </section>
+<!-- ═══════════════ Cashflow Forecast & Burn Rate ═══════════════ -->
     <section class="fadeUp">
       <div class="section-title">🔮 Proyeksi & Ketahanan Dana</div>
       <div class="forecast-grid">
@@ -387,57 +482,7 @@
         </div>
       </div>
     </section>
-
-    <!-- ═══════════════ Goals ═══════════════ -->
-    <section class="fadeUp">
-      <div class="section-title">
-        <span>🎯 Tujuan Keuangan</span>
-        <button class="btn-pill" id="btnAddGoal">+ Tambah Tujuan</button>
-      </div>
-      <div class="goals-grid" id="goalsGrid">
-        <div class="empty-state">
-          <div class="empty-state-icon">🎯</div>
-          Belum ada tujuan keuangan
-          <div class="empty-cta">
-            <button class="btn btn-primary btn-sm" id="btnAddGoalEmpty">+ Buat Tujuan Pertama</button>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ═══════════════ Smart Tools (AI + Calculators) ═══════════════ -->
-    <section class="fadeUp">
-      <div class="section-title">🧠 Smart Tools — AI &amp; Kalkulator</div>
-      <div class="smart-tools-grid">
-        <button class="smart-tool-card" id="btnSmartGoal" type="button">
-          <div class="smart-tool-icon">🎯</div>
-          <div class="smart-tool-name">Smart Goal AI</div>
-          <div class="smart-tool-desc">Ketik tujuan dengan bahasa natural — AI bikin target + deadline otomatis</div>
-        </button>
-        <button class="smart-tool-card" id="btnReceiptOCR" type="button">
-          <div class="smart-tool-icon">📸</div>
-          <div class="smart-tool-name">Scan Struk (OCR)</div>
-          <div class="smart-tool-desc">Foto struk, AI ekstrak merchant + total + kategori → jadi pengeluaran</div>
-        </button>
-        <button class="smart-tool-card" id="btnSpendingDNA" type="button">
-          <div class="smart-tool-icon">🧬</div>
-          <div class="smart-tool-name">Spending DNA</div>
-          <div class="smart-tool-desc">Cluster bulan dengan pola serupa — temukan profil "bulan pokok" vs "bulan indulgent"</div>
-        </button>
-        <button class="smart-tool-card" id="btnDebtPayoff" type="button">
-          <div class="smart-tool-icon">❄️</div>
-          <div class="smart-tool-name">Debt Payoff</div>
-          <div class="smart-tool-desc">Simulasi Snowball vs Avalanche — kapan bebas hutang &amp; berapa hemat bunga</div>
-        </button>
-        <button class="smart-tool-card" id="btnFire" type="button">
-          <div class="smart-tool-icon">🔥</div>
-          <div class="smart-tool-name">FIRE Projection</div>
-          <div class="smart-tool-desc">Berapa tahun lagi modal cukup untuk hidup dari passive income (4% rule)</div>
-        </button>
-      </div>
-    </section>
-
-    <!-- ═══════════════ Subscriptions Radar ═══════════════ -->
+<!-- ═══════════════ Subscriptions Radar ═══════════════ -->
     <section class="fadeUp">
       <div class="section-title">🔁 Radar Langganan & Tagihan</div>
       <div class="sub-radar-grid">
@@ -451,8 +496,7 @@
         </div>
       </div>
     </section>
-
-    <!-- ═══════════════ Bill Calendar ═══════════════ -->
+<!-- ═══════════════ Bill Calendar ═══════════════ -->
     <section class="fadeUp">
       <div class="section-title">
         <span>📅 Kalender Tagihan Bulan Ini</span>
@@ -488,77 +532,101 @@
         </div>
       </div>
     </section>
-
-    <!-- ═══════════════ Plafon Kategori (Envelope Budget) ═══════════════ -->
+<!-- ═══════════════ Smart Tools (AI + Calculators) ═══════════════ -->
     <section class="fadeUp">
-      <div class="section-title">
-        <span>📦 Plafon Kategori <span class="term-en">(Envelope Budgeting)</span></span>
-        <button class="btn-pill" id="btnEditCatBudgets" aria-label="Atur plafon kategori">⚙️ Atur Plafon</button>
+      <div class="section-title">🧠 Smart Tools — AI &amp; Kalkulator</div>
+      <div class="smart-tools-grid">
+        <button class="smart-tool-card" id="btnSmartGoal" type="button">
+          <div class="smart-tool-icon">🎯</div>
+          <div class="smart-tool-name">Smart Goal AI</div>
+          <div class="smart-tool-desc">Ketik tujuan dengan bahasa natural — AI bikin target + deadline otomatis</div>
+        </button>
+        <button class="smart-tool-card" id="btnReceiptOCR" type="button">
+          <div class="smart-tool-icon">📸</div>
+          <div class="smart-tool-name">Scan Struk (OCR)</div>
+          <div class="smart-tool-desc">Foto struk, AI ekstrak merchant + total + kategori → jadi pengeluaran</div>
+        </button>
+        <button class="smart-tool-card" id="btnSpendingDNA" type="button">
+          <div class="smart-tool-icon">🧬</div>
+          <div class="smart-tool-name">Spending DNA</div>
+          <div class="smart-tool-desc">Cluster bulan dengan pola serupa — temukan profil "bulan pokok" vs "bulan indulgent"</div>
+        </button>
+        <button class="smart-tool-card" id="btnDebtPayoff" type="button">
+          <div class="smart-tool-icon">❄️</div>
+          <div class="smart-tool-name">Debt Payoff</div>
+          <div class="smart-tool-desc">Simulasi Snowball vs Avalanche — kapan bebas hutang &amp; berapa hemat bunga</div>
+        </button>
+        <button class="smart-tool-card" id="btnFire" type="button">
+          <div class="smart-tool-icon">🔥</div>
+          <div class="smart-tool-name">FIRE Projection</div>
+          <div class="smart-tool-desc">Berapa tahun lagi modal cukup untuk hidup dari passive income (4% rule)</div>
+        </button>
       </div>
-      <div class="card">
-        <div id="catBudgetList">
-          <div class="empty-state">
-            <div class="empty-state-icon">📦</div>
-            Belum ada plafon kategori. Klik <b>Atur Plafon</b> untuk set limit per kategori (mis. Hiburan Rp 200rb/bulan).
+    </section>
+    </div>
+    
+
+    <!-- ═══════════════ TAB: PROFILE ═══════════════ -->
+    <div id="tab-profile" class="main-tab" hidden>
+      <section class="fadeUp">
+        <div class="section-title">👤 Profil & Pengaturan</div>
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-title">Akses Cepat</div>
+          <div class="settings-quick-actions">
+            <button class="settings-link" id="profileBtnSettings" type="button">
+              <span class="settings-link-icon">⚙️</span>
+              <span class="settings-link-text"><b>Pengaturan Umum</b><span class="muted">Aturan anggaran, plafon kategori</span></span>
+              <span class="settings-link-arrow">›</span>
+            </button>
+            <button class="settings-link" id="profileBtnWallets" type="button">
+              <span class="settings-link-icon">👛</span>
+              <span class="settings-link-text"><b>Kelola Dompet</b><span class="muted">Saldo awal, tambah/hapus dompet</span></span>
+              <span class="settings-link-arrow">›</span>
+            </button>
+            <button class="settings-link" id="profileBtnAuth" type="button">
+              <span class="settings-link-icon">🔑</span>
+              <span class="settings-link-text"><b>Token Akses</b><span class="muted">Keamanan backend</span></span>
+              <span class="settings-link-arrow">›</span>
+            </button>
+            <button class="settings-link" id="profileBtnTheme" type="button">
+              <span class="settings-link-icon">🎨</span>
+              <span class="settings-link-text"><b>Tema Tampilan</b><span class="muted">Dark / Light mode</span></span>
+              <span class="settings-link-arrow">›</span>
+            </button>
           </div>
         </div>
-      </div>
-    </section>
-
-    <!-- ═══════════════ Recent Transactions ═══════════════ -->
-    <section class="fadeUp">
-      <div class="section-title">
-        <span>📜 Transaksi Bulan Ini</span>
-        <input type="search" class="search-input" id="txSearch" placeholder="🔍 Cari…" aria-label="Cari transaksi" />
-      </div>
-      <div class="card" style="padding:0;overflow:hidden;">
-        <div id="txListWrap">
-          <table class="tx-table">
-            <thead>
-              <tr>
-                <th>Tanggal</th>
-                <th>Jenis</th>
-                <th>Deskripsi</th>
-                <th>Sumber</th>
-                <th class="ta-right">Jumlah</th>
-                <th class="ta-right">Aksi</th>
-              </tr>
-            </thead>
-            <tbody id="txTableBody">
-              <tr><td colspan="6" class="empty-cell">Memuat…</td></tr>
-            </tbody>
-          </table>
+        <div class="card">
+          <div class="card-title">Tentang</div>
+          <div class="muted" style="font-size:13px;line-height:1.6;">
+            <b>Keuangan Zulfitrah</b> — Money Tracker Pro v2<br>
+            Personal finance dengan financial intelligence.
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </div>
 
-    <!-- ═══════════════ 6 Months History ═══════════════ -->
-    <section class="fadeUp">
-      <div class="section-title">📅 Keuangan 6 Bulan Terakhir</div>
-      <div class="card" style="padding:0;overflow:hidden;">
-        <div class="table-scroll">
-          <table class="history-table">
-            <thead>
-              <tr>
-                <th>Bulan</th>
-                <th>Pemasukan</th>
-                <th>Pengeluaran</th>
-                <th>Tabungan</th>
-                <th>Sisa Saldo</th>
-                <th>SR%</th>
-                <th>Tx</th>
-                <th>Proporsi</th>
-              </tr>
-            </thead>
-            <tbody id="sixMonthsBody">
-              <tr><td colspan="8" class="empty-cell">Memuat data…</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
+</main>
 
-  </main>
+  <!-- ── Bottom Navigation ── -->
+  <nav class="bottom-nav" role="tablist" aria-label="Navigasi utama">
+    <a href="#" class="nav-item active" data-tab-target="tab-dashboard" role="tab" aria-selected="true">
+      <div class="nav-icon">🏠</div>
+      <div class="nav-label">Home</div>
+    </a>
+    <a href="#" class="nav-item" data-tab-target="tab-analytics" role="tab" aria-selected="false">
+      <div class="nav-icon">📊</div>
+      <div class="nav-label">Analytics</div>
+    </a>
+    <a href="#" class="nav-item" data-tab-target="tab-planning" role="tab" aria-selected="false">
+      <div class="nav-icon">🎯</div>
+      <div class="nav-label">Planning</div>
+    </a>
+    <a href="#" class="nav-item" data-tab-target="tab-profile" role="tab" aria-selected="false">
+      <div class="nav-icon">👤</div>
+      <div class="nav-label">Profile</div>
+    </a>
+  </nav>
+
 
   <!-- ── Floating Action Button ── -->
   <button id="fab" class="fab" aria-label="Tambah cepat">+</button>
@@ -1354,11 +1422,16 @@
             <input type="number" class="form-input" id="fireReturn" min="0" max="50" step="0.5" value="7" />
           </div>
         </div>
-        <div class="form-row single mb-14">
+        <div class="form-row">
           <div class="form-group">
             <label class="form-label" for="fireWithdrawal">Withdrawal Rate (%)</label>
             <input type="number" class="form-input" id="fireWithdrawal" min="2" max="10" step="0.5" value="4" />
-            <div class="muted micro-label">Default 4% (Trinity Study). Konservatif: 3-3,5%.</div>
+            <div class="muted micro-label">Default 4%.</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="fireInflation">Asumsi Inflasi (%)</label>
+            <input type="number" class="form-input" id="fireInflation" min="0" max="15" step="0.5" value="5" />
+            <div class="muted micro-label">Default 5% (Indonesia). Dipakai untuk hitung return riil.</div>
           </div>
         </div>
         <button class="btn-submit" id="btnRunFire">🧮 Hitung FIRE</button>
