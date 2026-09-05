@@ -164,6 +164,7 @@ function handleAction_(e) {
       case 'listWallets':            return listWallets();
       case 'listTransfers':          return listTransfers(data.month, data.year);
       case 'getAuthStatus':          return getAuthStatus();
+      case 'getLifestyleCreepAnalysis': return getLifestyleCreepAnalysis();
       // ── Create ──
       case 'addIncome':              return addIncome(data);
       case 'addExpense':              return addExpense(data);
@@ -222,7 +223,10 @@ function initSheets_() {
     // DSR yang riil & debt-payoff calculator. Sheet lama (5 kolom) akan
     // di-migrasi otomatis di blok schema-migration di bawah.
     { name: SHEET_NAMES.DEBT,    headers: ['Date', 'Type', 'Name', 'Value', 'Institution', 'MinPayment', 'InterestRate'] },
-    { name: SHEET_NAMES.GOAL,    headers: ['Date', 'Name', 'Target', 'Saved', 'Deadline', 'Category', 'Notes'] },
+    // InflationSensitive/InflationRate: untuk goal yang targetnya adalah
+    // harga barang/jasa masa depan (DP rumah, biaya kuliah) yang ikut naik
+    // seiring inflasi — beda dengan goal nominal tetap (dana darurat).
+    { name: SHEET_NAMES.GOAL,    headers: ['Date', 'Name', 'Target', 'Saved', 'Deadline', 'Category', 'Notes', 'InflationSensitive', 'InflationRate'] },
     // Template transaksi cepat — user simpan transaksi yg sering muncul
     // Kind: 'income' | 'expense' | 'saving'. Untuk expense, pakai Category+Subcategory.
     // Untuk income/saving, pakai TypeText (di kolom Category) — Subcategory kosong.
@@ -449,7 +453,9 @@ function listGoals() {
     saved: parseFloat(r[3]) || 0,
     deadline: toIso_(r[4]),
     category: r[5] || 'Umum',
-    notes: r[6] || ''
+    notes: r[6] || '',
+    inflationSensitive: String(r[7]).toUpperCase() === 'TRUE' || r[7] === true,
+    inflationRate: r[8] !== '' && r[8] != null ? parseFloat(r[8]) : 6
   }));
   return { success: true, goals: items };
 }
@@ -465,7 +471,9 @@ function addGoal(data) {
       Number(data.saved) || 0,
       data.deadline || '',
       data.category || 'Umum',
-      data.notes || ''
+      data.notes || '',
+      !!data.inflationSensitive,
+      data.inflationRate != null ? Number(data.inflationRate) : 6
     ]);
   return { success: true, msg: 'Tujuan keuangan berhasil ditambahkan! 🎯' };
 }
@@ -475,15 +483,17 @@ function updateGoal(data) {
   if (!sh) throw new Error('Sheet Goals tidak ditemukan');
   const row = parseInt(data.rowIndex, 10);
   if (!row || row < 2) throw new Error('Index baris tidak valid');
-  const cur = sh.getRange(row, 1, 1, 7).getValues()[0];
-  sh.getRange(row, 1, 1, 7).setValues([[
+  const cur = sh.getRange(row, 1, 1, 9).getValues()[0];
+  sh.getRange(row, 1, 1, 9).setValues([[
     cur[0],
     data.name !== undefined ? data.name : cur[1],
     data.target !== undefined ? Number(data.target) : cur[2],
     data.saved !== undefined ? Number(data.saved) : cur[3],
     data.deadline !== undefined ? data.deadline : cur[4],
     data.category !== undefined ? data.category : cur[5],
-    data.notes !== undefined ? data.notes : cur[6]
+    data.notes !== undefined ? data.notes : cur[6],
+    data.inflationSensitive !== undefined ? !!data.inflationSensitive : (cur[7] === true || String(cur[7]).toUpperCase() === 'TRUE'),
+    data.inflationRate !== undefined ? Number(data.inflationRate) : (cur[8] || 6)
   ]]);
   return { success: true, msg: 'Tujuan diperbarui ✏️' };
 }
@@ -2199,7 +2209,158 @@ function calculateDebtPayoff(data) {
   }
   result.totalDebt = debts.reduce((s, d) => s + d.balance, 0);
   result.totalMinPayment = debts.reduce((s, d) => s + d.minPayment, 0);
+
+  // ── COST OF DEBT vs INVESTMENT RETURN ──
+  // Advisor logic: melunasi utang = return BEBAS RISIKO sebesar bunga utang
+  // (guaranteed, karena mengurangi kewajiban pasti). Investasi = return
+  // ASUMSI (variabel, ada risiko). Kita beri margin keamanan (risk premium)
+  // sebelum merekomendasikan "investasi dulu" — bukan cuma bunga > return.
+  const assumedInvestReturn = (Number(data.assumedInvestReturn) || 7) / 100; // default 7%/thn reksadana saham
+  const RISK_PREMIUM = 0.02; // 2pp margin keamanan untuk risiko investasi vs kepastian melunasi utang
+  result.costOfDebt = debts
+    .map(d => {
+      const netBenefitPct = (d.interestRate - assumedInvestReturn) * 100;
+      let verdict, severity;
+      if (netBenefitPct > RISK_PREMIUM * 100) {
+        verdict = `🔴 Lunasi dulu — bunga ${(d.interestRate*100).toFixed(1)}%/thn jauh lebih mahal dari return investasi asumsi ${(assumedInvestReturn*100).toFixed(1)}%/thn.`;
+        severity = 'critical';
+      } else if (netBenefitPct > 0) {
+        verdict = `🟡 Prioritaskan pelunasan — selisih tipis (${netBenefitPct.toFixed(1)}pp), tapi melunasi utang itu return BEBAS RISIKO, investasi belum tentu.`;
+        severity = 'warning';
+      } else {
+        verdict = `🟢 Investasi masih lebih menguntungkan secara matematis, tapi tetap bayar minimum payment utang ini tepat waktu.`;
+        severity = 'ok';
+      }
+      return {
+        name: d.name,
+        balance: d.balance,
+        interestRatePct: d.interestRate * 100,
+        assumedInvestReturnPct: assumedInvestReturn * 100,
+        netBenefitPct: netBenefitPct,
+        severity: severity,
+        verdict: verdict
+      };
+    })
+    .sort((a, b) => b.netBenefitPct - a.netBenefitPct); // paling merugikan (bunga tertinggi) di atas
+
+  const worstDebt = result.costOfDebt[0];
+  if (worstDebt && worstDebt.severity === 'critical') {
+    result.costOfDebtHeadline = `⚠️ Stop dulu investasi tambahan — "${worstDebt.name}" berbunga ${worstDebt.interestRatePct.toFixed(1)}%/thn, jauh di atas return investasi Anda (${worstDebt.assumedInvestReturnPct.toFixed(1)}%/thn). Lunasi ini dulu sebelum menambah portofolio.`;
+  } else if (worstDebt) {
+    result.costOfDebtHeadline = `✅ Tidak ada utang yang "lebih mahal" dari return investasi Anda saat ini — aman melanjutkan investasi sambil bayar minimum payment.`;
+  }
+
   return result;
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  Lifestyle Creep Detector
+// ════════════════════════════════════════════════════════════════════
+
+/**
+ * Bandingkan pertumbuhan income vs pertumbuhan pengeluaran "Keinginan" (wants)
+ * tahun-ke-tahun. Sinyal lifestyle creep: wants tumbuh jauh lebih cepat dari
+ * income (gap besar), ATAU savings rate menurun meski income naik — kombinasi
+ * ini lebih jujur daripada cuma lihat kenaikan wants saja (bisa saja itu
+ * momen sekali seperti pernikahan, bukan pola gaya hidup permanen).
+ */
+function getLifestyleCreepAnalysis() {
+  initSheets_();
+  const incomeRows = getSheetData_(SHEET_NAMES.INCOME);
+  const expenseRows = getSheetData_(SHEET_NAMES.EXPENSE);
+
+  const byYear = {}; // { year: { income, needs, wants, invest } }
+  function ensureYear(y) {
+    if (!byYear[y]) byYear[y] = { income: 0, needs: 0, wants: 0, invest: 0, txCount: 0 };
+    return byYear[y];
+  }
+
+  incomeRows.forEach(r => {
+    const d = new Date(r[0]);
+    if (isNaN(d)) return;
+    const y = d.getFullYear();
+    ensureYear(y).income += parseFloat(r[2]) || 0;
+  });
+
+  expenseRows.forEach(r => {
+    const d = new Date(r[0]);
+    if (isNaN(d)) return;
+    const y = d.getFullYear();
+    const cat = r[1] || '';
+    const type = CATEGORY_TYPES[cat] || 'wants';
+    const amount = parseFloat(r[3]) || 0;
+    const yr = ensureYear(y);
+    yr[type] = (yr[type] || 0) + amount;
+    yr.txCount++;
+  });
+
+  const years = Object.keys(byYear).map(Number).sort((a, b) => a - b);
+  if (years.length < 2) {
+    return {
+      success: true,
+      hasEnoughData: false,
+      message: 'Butuh data minimal 2 tahun berjalan untuk deteksi lifestyle creep yang valid. Terus catat transaksi ya!',
+      years: years
+    };
+  }
+
+  const curY = years[years.length - 1];
+  const prevY = years[years.length - 2];
+  const cur = byYear[curY];
+  const prev = byYear[prevY];
+
+  function pctGrowth(a, b) { return b > 0 ? ((a - b) / b) * 100 : (a > 0 ? 100 : 0); }
+
+  const incomeGrowth = pctGrowth(cur.income, prev.income);
+  const wantsGrowth = pctGrowth(cur.wants, prev.wants);
+  const needsGrowth = pctGrowth(cur.needs, prev.needs);
+  const creepGap = wantsGrowth - incomeGrowth;
+
+  const curSavingsRate = cur.income > 0 ? ((cur.income - cur.needs - cur.wants) / cur.income) * 100 : 0;
+  const prevSavingsRate = prev.income > 0 ? ((prev.income - prev.needs - prev.wants) / prev.income) * 100 : 0;
+  const savingsRateDrop = prevSavingsRate - curSavingsRate;
+
+  // Trigger: gap wants-vs-income > 10pp DAN savings rate turun → sinyal kuat,
+  // bukan cuma kebetulan satu momen (pesta pernikahan, dsb).
+  const GAP_THRESHOLD = 10;
+  const SAVINGS_DROP_THRESHOLD = 3;
+  let detected = false;
+  let severity = 'none';
+  let message = `Pola pengeluaran Anda sehat — pertumbuhan gaya hidup (${wantsGrowth.toFixed(1)}%) masih sejalan dengan pertumbuhan income (${incomeGrowth.toFixed(1)}%).`;
+
+  if (creepGap > GAP_THRESHOLD && savingsRateDrop > SAVINGS_DROP_THRESHOLD) {
+    detected = true;
+    severity = 'high';
+    message = `Income naik ${incomeGrowth.toFixed(1)}% tapi pengeluaran "Keinginan" naik ${wantsGrowth.toFixed(1)}% (${curY} vs ${prevY}). Savings rate turun dari ${prevSavingsRate.toFixed(1)}% ke ${curSavingsRate.toFixed(1)}%. Ini pola klasik lifestyle creep — gaya hidup naik lebih cepat dari kemampuan riil.`;
+  } else if (creepGap > GAP_THRESHOLD) {
+    detected = true;
+    severity = 'medium';
+    message = `Pengeluaran "Keinginan" naik ${wantsGrowth.toFixed(1)}%, jauh di atas pertumbuhan income (${incomeGrowth.toFixed(1)}%). Belum kritis karena savings rate masih terjaga, tapi patut dipantau.`;
+  }
+
+  return {
+    success: true,
+    hasEnoughData: true,
+    detected: detected,
+    severity: severity,
+    message: message,
+    currentYear: curY,
+    previousYear: prevY,
+    incomeGrowthPct: incomeGrowth,
+    wantsGrowthPct: wantsGrowth,
+    needsGrowthPct: needsGrowth,
+    creepGapPct: creepGap,
+    currentSavingsRate: curSavingsRate,
+    previousSavingsRate: prevSavingsRate,
+    savingsRateDropPp: savingsRateDrop,
+    yearlyBreakdown: years.map(y => ({
+      year: y,
+      income: byYear[y].income,
+      needs: byYear[y].needs,
+      wants: byYear[y].wants,
+      invest: byYear[y].invest
+    }))
+  };
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -2215,8 +2376,16 @@ function calculateFireProjection(data) {
   const monthlyExpense = Number(data.monthlyExpense) || 0;
   const monthlyContrib = Number(data.monthlyContribution) || 0;
   const current = Number(data.currentInvestment) || 0;
-  const annualReturn = (Number(data.returnRate) || 7) / 100; // default 7% nominal IDR
+  const nominalReturn = (Number(data.returnRate) || 7) / 100; // default 7% nominal IDR
   const withdrawalRate = (Number(data.withdrawalRate) || 4) / 100;
+  // ── INFLASI ──
+  // Kalkulator FIRE lama pakai nominal return tanpa inflasi → target uang
+  // (misal Rp1M) dianggap tetap sama nilainya 20 tahun ke depan, padahal
+  // daya belinya jauh menyusut. Fix: pakai REAL RETURN (Fisher equation),
+  // bukan expense yang di-inflate manual tahun-per-tahun (double complexity).
+  // Semua angka output otomatis dalam "nilai uang hari ini" (real terms).
+  const inflationRate = (Number(data.inflationRate) != null ? Number(data.inflationRate) : 5) / 100;
+  const realReturn = (1 + nominalReturn) / (1 + inflationRate) - 1;
 
   if (monthlyExpense <= 0) {
     return { success: false, error: 'Pengeluaran bulanan harus > 0 untuk hitung FIRE.' };
@@ -2224,8 +2393,10 @@ function calculateFireProjection(data) {
   const annualExpense = monthlyExpense * 12;
   const fireNumber = annualExpense / withdrawalRate; // 25× kalau 4%
 
-  // Simulasi bulanan: capital tumbuh dengan return tahunan + kontribusi bulanan
-  const monthlyReturn = annualReturn / 12;
+  // Simulasi bulanan: capital tumbuh dengan REAL return tahunan + kontribusi bulanan.
+  // Kontribusi bulanan diasumsikan tumbuh sejalan gaji (proxy inflasi) sehingga
+  // nilainya tetap konstan dalam terma riil — tidak perlu di-inflate terpisah.
+  const monthlyReturn = realReturn / 12;
   let capital = current;
   let months = 0;
   const maxMonths = 50 * 12; // cap 50 tahun
@@ -2240,9 +2411,9 @@ function calculateFireProjection(data) {
   const reached = capital >= fireNumber;
   const yearsLeft = months / 12;
 
-  // Coast FIRE: kalau berhenti kontribusi sekarang, kapan capital cukup
+  // Coast FIRE: kalau berhenti kontribusi sekarang, kapan capital cukup (real terms)
   let coastMonths = 0, coastCapital = current;
-  if (current > 0 && annualReturn > 0) {
+  if (current > 0 && realReturn > 0) {
     while (coastCapital < fireNumber && coastMonths < maxMonths) {
       coastMonths++;
       coastCapital *= (1 + monthlyReturn);
@@ -2252,6 +2423,16 @@ function calculateFireProjection(data) {
   }
   const coastYears = coastCapital >= fireNumber ? coastMonths / 12 : null;
 
+  // Perbandingan naif (tanpa inflasi) supaya user lihat sendiri bedanya —
+  // ini bagian edukatif: false sense of security dari kalkulator versi lama.
+  const naiveMonthlyReturn = nominalReturn / 12;
+  let naiveCapital = current, naiveMonths = 0;
+  while (naiveCapital < fireNumber && naiveMonths < maxMonths) {
+    naiveMonths++;
+    naiveCapital = naiveCapital * (1 + naiveMonthlyReturn) + monthlyContrib;
+  }
+  const naiveYearsToFire = naiveCapital >= fireNumber ? naiveMonths / 12 : null;
+
   return {
     success: true,
     fireNumber: fireNumber,
@@ -2260,12 +2441,15 @@ function calculateFireProjection(data) {
     yearsToFire: reached ? yearsLeft : null,
     coastYears: coastYears,
     timeline: timeline,
+    inflationRate: inflationRate * 100,
+    realReturn: realReturn * 100,
+    naiveYearsToFire: naiveYearsToFire, // tanpa penyesuaian inflasi, untuk perbandingan
     inputs: {
-      monthlyExpense, monthlyContrib, current, annualReturn, withdrawalRate
+      monthlyExpense, monthlyContrib, current, nominalReturn, realReturn, inflationRate, withdrawalRate
     },
     summary: reached
-      ? `Anda akan FIRE dalam ${yearsLeft.toFixed(1)} tahun (${Math.floor(yearsLeft)} thn ${Math.round((yearsLeft % 1) * 12)} bln) dengan target ${fmtRp_(fireNumber)}.`
-      : `Dengan asumsi sekarang, butuh > 50 tahun. Pertimbangkan tingkatkan kontribusi atau cari instrumen return lebih tinggi.`
+      ? `Dengan inflasi ${(inflationRate*100).toFixed(1)}%/thn (real return ${(realReturn*100).toFixed(1)}%), Anda akan FIRE dalam ${yearsLeft.toFixed(1)} tahun (${Math.floor(yearsLeft)} thn ${Math.round((yearsLeft % 1) * 12)} bln) — target ${fmtRp_(fireNumber)} dalam daya beli hari ini.`
+      : `Dengan asumsi sekarang (sudah memperhitungkan inflasi), butuh > 50 tahun. Pertimbangkan tingkatkan kontribusi atau cari instrumen return lebih tinggi.`
   };
 }
 
