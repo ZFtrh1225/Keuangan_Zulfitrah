@@ -1491,6 +1491,17 @@
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js').catch(() => {});
       });
+      // Kalau versi Service Worker baru aktif (lihat sw.js: MTPRO_SW_UPDATED),
+      // tawarkan reload ke user — ini mengatasi kasus PWA ter-install di HP
+      // yang terus menyajikan shell lama walau file di server sudah baru.
+      let alreadyPrompted = false;
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'MTPRO_SW_UPDATED' && !alreadyPrompted) {
+          alreadyPrompted = true;
+          const wantsReload = confirm('Versi baru aplikasi tersedia. Muat ulang sekarang?');
+          if (wantsReload) window.location.reload();
+        }
+      });
     }
   </script>
 </body>
