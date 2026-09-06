@@ -948,7 +948,11 @@ html[data-theme="light"] .summary-card {
   background: rgba(0,0,0,0.78);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  z-index: 500;
+  /* Sebelumnya 500 — lebih rendah dari .bottom-nav (1000), sehingga tombol
+     "Simpan" di bagian bawah modal (mis. Tambah Pemasukan/Pengeluaran/
+     Tabungan) ketutup tab bar di HP. Modal harus selalu jadi lapisan
+     paling atas selagi terbuka. */
+  z-index: 1600;
   display: flex; align-items: center; justify-content: center;
   opacity: 0; pointer-events: none;
   transition: opacity .25s;
@@ -1293,6 +1297,11 @@ select.form-input {
   .modal-heading { font-size: clamp(18px, 5vw, 22px); }
   .modal-close { width: 36px; height: 36px; font-size: 20px; }
   .tab-btn { font-size: clamp(13px, 3.5vw, 15px); padding: 12px 14px; }
+
+  /* Ekstra padding bawah + safe-area-inset untuk device dengan gesture bar/
+     notch (iPhone) — supaya tombol Simpan yang ada di akhir .modal-body
+     tidak mepet/ketutup UI sistem, terlepas dari z-index modal sudah benar. */
+  .modal-body { padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
 
   .form-input { font-size: 16px; padding: 12px 14px; min-height: 48px; }
   /* font-size 16px mencegah iOS zoom on focus */
