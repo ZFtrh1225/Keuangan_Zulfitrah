@@ -2891,6 +2891,7 @@
 
     // FIRE
     wire('btnFire', openFireModal);
+    wire('btnLoanCalc', () => openModal('loanCalcModalOverlay'));
     wire('btnRunFire', runFireProjection);
 
     // Spending DNA
