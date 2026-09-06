@@ -10,8 +10,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="theme-color" content="#070a12" />
-  <meta name="apple-mobile-web-app-title" content="Money Pro" />
-  <meta name="application-name" content="Money Pro" />
+  <meta name="apple-mobile-web-app-title" content="Keuangan Zulfitrah" />
+  <meta name="application-name" content="Keuangan Zulfitrah" />
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" sizes="192x192" href="https://cdn-icons-png.flaticon.com/512/5501/5501375.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="https://cdn-icons-png.flaticon.com/512/5501/5501375.png" />
@@ -560,6 +560,11 @@
           <div class="smart-tool-icon">🔥</div>
           <div class="smart-tool-name">FIRE Projection</div>
           <div class="smart-tool-desc">Berapa tahun lagi modal cukup untuk hidup dari passive income (4% rule)</div>
+        </button>
+        <button class="smart-tool-card" id="btnLoanCalc" type="button">
+          <div class="smart-tool-icon">🧮</div>
+          <div class="smart-tool-name">Kalkulator Pinjaman</div>
+          <div class="smart-tool-desc">Simulasi cicilan pinjol/KTA — cek bunga efektif sesungguhnya & apakah wajar</div>
         </button>
       </div>
     </section>
@@ -1414,6 +1419,64 @@
     </div>
   </div>
 
+  <!-- ═══════════════ MODAL: Kalkulator Pinjaman ═══════════════ -->
+  <div class="modal-overlay" id="loanCalcModalOverlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="loanCalcTitle">
+      <div class="modal-header">
+        <div class="modal-top">
+          <div class="modal-heading" id="loanCalcTitle">🧮 Kalkulator Pinjaman</div>
+          <button class="modal-close" data-close="loanCalcModalOverlay" aria-label="Tutup">×</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="muted micro-label" style="margin-bottom:14px;">
+          Masukkan simulasi cicilan yang ditawarkan pemberi pinjaman (pinjol/KTA/leasing).
+          Kalkulator ini menghitung <b>bunga efektif sesungguhnya</b> (bukan cuma "bunga flat"
+          yang biasa ditampilkan) dan membandingkannya ke kewajaran pasar.
+          <b>Tidak ada data yang disimpan</b> — murni kalkulasi sekali pakai.
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="loanPrincipal">Nominal Pinjaman</label>
+            <div class="amount-input-wrap">
+              <span class="amount-prefix">Rp</span>
+              <input type="text" inputmode="numeric" class="form-input currency-mask" id="loanPrincipal" placeholder="2.000.000" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="loanTenor">Tenor (bulan)</label>
+            <input type="number" class="form-input" id="loanTenor" min="1" max="60" step="1" placeholder="12" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="loanMonthly">Cicilan / Bulan</label>
+            <div class="amount-input-wrap">
+              <span class="amount-prefix">Rp</span>
+              <input type="text" inputmode="numeric" class="form-input currency-mask" id="loanMonthly" placeholder="150.000" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="loanAdminFee">Biaya Admin</label>
+            <div class="amount-input-wrap">
+              <span class="amount-prefix">Rp</span>
+              <input type="text" inputmode="numeric" class="form-input currency-mask" id="loanAdminFee" placeholder="0 (opsional)" />
+            </div>
+          </div>
+        </div>
+        <div class="form-row single mb-14">
+          <label class="form-label" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="loanAdminDeducted" style="width:auto;" checked />
+            Biaya admin dipotong langsung dari dana yang dicairkan
+          </label>
+          <div class="muted micro-label">Umum di pinjol: ajukan Rp2jt, admin Rp100rb → dana cair Rp1,9jt, tapi cicilan tetap dihitung dari Rp2jt. Uncheck kalau admin dibayar terpisah di luar itu.</div>
+        </div>
+        <button class="btn-submit" id="btnRunLoanCalc">🧮 Hitung &amp; Analisa</button>
+        <div id="loanCalcResult" class="loan-result" hidden></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ═══════════════ MODAL: Spending DNA ═══════════════ -->
   <div class="modal-overlay" id="dnaModalOverlay">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="dnaTitle">
@@ -1480,6 +1543,7 @@
   <script src="js/inflation-calculator.js" defer></script>
   <script src="js/debt-optimizer.js" defer></script>
   <script src="js/lifestyle-creep-detector.js" defer></script>
+  <script src="js/loan-calculator.js" defer></script>
   <script src="js/goals-gamification.js" defer></script>
   <script src="js/app.js" defer></script>
   <script src="js/tab-navigation.js" defer></script>
