@@ -21,19 +21,26 @@
     const daysRemaining = new Date(year, month, 0).getDate() - now.getDate() + 1; // termasuk hari ini
     const candidates = [];
 
+    const manualKeys = new Set();
     (dashboard.manualBills || []).forEach(b => {
       const due = day(b.dueDate);
       const value = amount(b.amount);
       if (!due || value == null || value <= 0 || !b.name) return;
       const left = diffDays(due, today);
-      if (left < 0 || left > 7) return;
-      candidates.push({ type: 'bill', score: 1000 - left * 10, title: `Cek tagihan ${b.name}`,
-        date: b.dueDate, amount: value, daysLeft: left, wallet: null, predicted: false });
+      if (left < -7 || left > 7) return;
+      manualKeys.add(`${b.dueDate}|${String(b.name).trim().toLowerCase()}`);
+      if (b.paid || b.paidAt) return;
+      candidates.push({ type: 'bill', score: left < 0 ? 1010 - left * 3 : 1000 - left * 10,
+        title: `${left < 0 ? 'Tindak lanjuti' : 'Cek'} tagihan ${b.name}`,
+        date: b.dueDate, amount: value, daysLeft: left,
+        wallet: typeof b.wallet === 'string' ? b.wallet.trim() : '', id: b.id || '', predicted: false });
     });
     (dashboard.upcomingBills || []).forEach(b => {
       const due = day(b.nextDate);
       const value = amount(b.avgAmount != null ? b.avgAmount : b.lastAmount);
-      if (!due || value == null || value <= 0 || !b.name || b.paidThisMonth) return;
+      const paidForNextDate = b.paidForNextDate !== undefined ? b.paidForNextDate : b.paidThisMonth;
+      if (!due || value == null || value <= 0 || !b.name || paidForNextDate ||
+          manualKeys.has(`${b.nextDate}|${String(b.name).trim().toLowerCase()}`)) return;
       const left = diffDays(due, today);
       if (left < 0 || left > 7) return;
       candidates.push({ type: 'bill', score: 990 - left * 10, title: `Cek perkiraan tagihan ${b.name}`,
@@ -70,10 +77,9 @@
         inflationAdjusted: Boolean(g.inflationSensitive && g.effectiveTarget != null) });
     });
 
-    // Satu tindakan paling mendesak per sumber supaya tiga slot tidak dipenuhi satu jenis peringatan.
+    // Tiga urgensi tertinggi; dua tagihan dekat boleh mengisi dua slot.
     candidates.sort((a, b) => b.score - a.score || a.title.localeCompare(b.title, 'id'));
-    const seen = new Set();
-    return candidates.filter(item => !seen.has(item.type) && seen.add(item.type)).slice(0, 3);
+    return candidates.slice(0, 3);
   }
 
   return { prioritize };

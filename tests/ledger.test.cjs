@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-function backend() {
+function backend(fixedNow) {
   const sheets = new Map();
   const cache = new Map();
   const properties = new Map();
@@ -67,6 +67,18 @@ function backend() {
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) },
     console
   };
+  if (fixedNow) {
+    context.Date = class extends Date {
+      constructor(...args) { super(...(args.length ? args : [fixedNow])); }
+      static now() { return new Date(fixedNow).getTime(); }
+    };
+    context.Utilities.formatDate = date => {
+      const pieces = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit'
+      }).formatToParts(new Date(date)).map(part => [part.type, part.value]));
+      return `${pieces.year}-${pieces.month}-${pieces.day}`;
+    };
+  }
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'Code.gs'), 'utf8'), context);
   return { context, sheets, cache };
@@ -278,6 +290,100 @@ test('wallet checks accept zero, reject invalid input and retain custom columns'
   assert.equal(log.rows[1][3], '');
   assert.equal(app.listWalletReconciliations().records[0].difference, 0);
   assert.equal(app.applyWalletAdjustment({ id: check.id }).success, false);
+});
+
+test('legacy bills gain stable IDs without losing custom columns; edits follow ID after deletion', () => {
+  const { context: app, sheets } = backend('2026-09-28T12:00:00+07:00');
+  app.initSheets_();
+  const bills = sheets.get('Bills');
+  bills.rows[0].splice(2, 0, 'Custom');
+  bills.appendRow(['2026-10-02', 'A', 'keep-a', 100000, '', '', '', '', '']);
+  bills.appendRow(['2026-10-03', 'B', 'keep-b', 200000, '', '', '', '', '']);
+  const before = app.listBills(10, 2026).bills;
+  assert.equal(before.length, 2);
+  assert.ok(before[0].id && before[1].id && before[0].id !== before[1].id);
+  assert.equal(before[0].paid, false);
+  assert.equal(app.listBills(10, 2026).bills[0].id, before[0].id);
+  assert.equal(app.deleteBill(null, before[0].id).success, true);
+  assert.equal(app.updateBill({ id: before[1].id, name: 'B diperbarui', amount: 250000 }).success, true);
+  assert.equal(app.listBills(10, 2026).bills[0].name, 'B diperbarui');
+  assert.equal(bills.rows[1][2], 'keep-b');
+});
+
+test('unpaid bills across September and October appear once in the seven-day priority window', () => {
+  const { context: app } = backend('2026-09-28T12:00:00+07:00');
+  assert.equal(app.addBill({ name: 'September', dueDate: '2026-09-30', amount: 100000 }).success, true);
+  assert.equal(app.addBill({ name: 'Oktober', dueDate: '2026-10-02', amount: 200000 }).success, true);
+  assert.equal(app.addBill({ name: 'Lewat jauh', dueDate: '2026-09-01', amount: 300000 }).success, true);
+  const current = app.getDashboardData(9, 2026);
+  assert.deepEqual(Array.from(current.manualBills, b => b.name), ['September', 'Oktober']);
+  assert.equal(current.calendar.days[29].items[0].name, 'September');
+  assert.equal(current.calendar.remainingCount, 1);
+  assert.equal(current.calendar.remainingCommitment, 100000);
+  assert.deepEqual(Array.from(app.getDashboardData(10, 2026).manualBills), []);
+  assert.equal(app.getDashboardData(10, 2026).calendar.days[1].items[0].name, 'Oktober');
+});
+
+test('marking paid updates calendar and priorities without changing cashflow or wallet balance', () => {
+  const { context: app } = backend('2026-09-28T12:00:00+07:00');
+  app.addWallet({ name: 'BRI', opening: 300000, openingDate: '2026-09-01', type: 'Bank' });
+  assert.equal(app.addBill({ name: 'PBB', dueDate: '2026-09-30', amount: 200000,
+    wallet: 'BRI' }).success, true);
+  const before = app.getDashboardData(9, 2026);
+  const id = before.manualBills[0].id;
+  assert.equal(before.manualBills[0].wallet, 'BRI');
+  assert.equal(before.walletBalances.BRI, 300000);
+  assert.equal(before.calendar.remainingCommitment, 200000);
+  const paid = app.updateBill({ id, paid: true });
+  assert.equal(paid.success, true);
+  const after = app.getDashboardData(9, 2026);
+  assert.equal(after.manualBills[0].paid, true);
+  assert.ok(after.manualBills[0].paidAt);
+  assert.equal(after.calendar.days[29].items[0].paid, true);
+  assert.equal(after.calendar.remainingCount, 0);
+  assert.equal(after.summary.totalExp, 0);
+  assert.equal(after.walletBalances.BRI, 300000);
+  assert.equal(app.updateBill({ id, paid: true }).success, true);
+  assert.equal(app.listBills(9, 2026).bills.find(b => b.id === id).paidAt, after.manualBills[0].paidAt);
+  assert.equal(app.updateBill({ id, paid: false }).success, true);
+  assert.equal(app.getDashboardData(9, 2026).calendar.remainingCommitment, 200000);
+});
+
+test('bill input validation prevents invented dates and unknown wallets', () => {
+  const { context: app } = backend('2026-12-29T12:00:00+07:00');
+  assert.equal(app.addBill({ name: 'A', dueDate: '2026-02-31', amount: 10 }).success, false);
+  assert.equal(app.addBill({ name: 'A', dueDate: '2027-01-02', amount: 0 }).success, false);
+  assert.equal(app.addBill({ name: 'A', dueDate: '2027-01-02', amount: 10,
+    wallet: 'tidak ada' }).success, false);
+  assert.equal(app.addBill({ name: 'Tahun baru', dueDate: '2027-01-02', amount: 15000 }).success, true);
+  assert.equal(app.getDashboardData(12, 2026).manualBills[0].name, 'Tahun baru');
+  const id = app.listBills(1, 2027).bills[0].id;
+  assert.equal(app.updateBill({ id, dueDate: '2027-02-30' }).success, false);
+  assert.equal(app.updateBill({ id, paid: 'yes' }).success, false);
+  assert.equal(app.updateBill({ id: 'missing', paid: true }).success, false);
+});
+
+test('a subscription paid this month can still be due next month; month ends clamp correctly', () => {
+  const { context: sep } = backend('2026-09-28T12:00:00+07:00');
+  sep.addExpense({ date: '2026-09-01', category: 'Kewajiban & Utang',
+    subcategory: 'Internet', amount: 120000, source: 'Cash' });
+  const september = sep.getDashboardData(9, 2026);
+  assert.equal(september.upcomingBills.length, 1);
+  assert.equal(september.upcomingBills[0].nextDate, '2026-10-01');
+  assert.equal(september.upcomingBills[0].paidThisMonth, true);
+  assert.equal(september.upcomingBills[0].paidForNextDate, false);
+  sep.addBill({ name: 'Internet', dueDate: '2026-10-01', amount: 120000 });
+  const october = sep.getDashboardData(10, 2026);
+  assert.equal(october.calendar.days[0].items.length, 1);
+  assert.equal(october.calendar.days[0].total, 120000);
+  assert.equal(october.calendar.remainingCommitment, 120000);
+
+  const { context: feb } = backend('2027-02-24T12:00:00+07:00');
+  feb.addExpense({ date: '2027-01-31', category: 'Kewajiban & Utang',
+    subcategory: 'Internet', amount: 120000, source: 'Cash' });
+  const february = feb.getDashboardData(2, 2027);
+  assert.equal(february.upcomingBills[0].nextDate, '2027-02-28');
+  assert.equal(february.calendar.days[27].items[0].paid, false);
 });
 
 test('past net worth is unknown until captured; repeated capture with identical values is idempotent', () => {

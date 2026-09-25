@@ -189,6 +189,7 @@ function handleAction_(e) {
       case 'updateGoal':             return updateGoal(data);
       case 'updateDebt':             return updateDebt(data);
       case 'updateWallet':           return updateWallet(data);
+      case 'updateBill':             return updateBill(data);
       case 'saveSettings':           return saveSettings(data);
       case 'saveAppSecret':          return saveAppSecret(data);
       // ── Delete ──
@@ -196,7 +197,7 @@ function handleAction_(e) {
       case 'deleteWealthItem':       return deleteWealthItem(data.type, data.rowIndex);
       case 'deleteGoal':             return deleteGoal(data.rowIndex);
       case 'deleteTemplate':         return deleteTemplate(data.rowIndex);
-      case 'deleteBill':             return deleteBill(data.rowIndex);
+      case 'deleteBill':             return deleteBill(data.rowIndex, data.id);
       case 'deleteWallet':           return deleteWallet(data.rowIndex);
       case 'deleteTransfer':         return deleteTransfer(data.rowIndex);
       // ── Special ──
@@ -242,7 +243,7 @@ function initSheets_() {
     // Untuk income/saving, pakai TypeText (di kolom Category) — Subcategory kosong.
     { name: SHEET_NAMES.TEMPLATE, headers: ['Name', 'Kind', 'Category', 'Subcategory', 'Amount', 'Source', 'Notes', 'CreatedAt'] },
     // Tagihan/cicilan manual non-recurring (PBB, premi tahunan, dll)
-    { name: SHEET_NAMES.BILL,    headers: ['DueDate', 'Name', 'Amount', 'Notes', 'CreatedAt'] },
+    { name: SHEET_NAMES.BILL,    headers: ['DueDate', 'Name', 'Amount', 'Notes', 'CreatedAt', 'Wallet', 'PaidAt', 'Id'] },
     // Wallets: opening balance + metadata per dompet (BRI, Cash, dll)
     { name: SHEET_NAMES.WALLET,  headers: ['Name', 'OpeningBalance', 'OpeningDate', 'Type', 'Notes', 'CreatedAt'] },
     // Transfers antar dompet (tidak menambah/mengurangi total kekayaan)
@@ -288,6 +289,26 @@ function initSheets_() {
       if (!lock.tryLock(10000)) throw new Error('Sistem sedang sibuk, coba lagi sebentar.');
       try {
         const ids = cells.getValues(); // re-read under lock
+        let changed = false;
+        ids.forEach(row => {
+          if (!row[0]) { row[0] = Utilities.getUuid(); changed = true; }
+        });
+        if (changed) cells.setValues(ids);
+      } finally {
+        lock.releaseLock();
+      }
+    }
+  }
+  // Stable IDs keep bill actions attached to the right row after a deletion.
+  const bills = ss.getSheetByName(SHEET_NAMES.BILL);
+  if (bills.getLastRow() > 1) {
+    const idColumn = colIndex_(bills, 'Id') + 1;
+    const cells = bills.getRange(2, idColumn, bills.getLastRow() - 1, 1);
+    if (cells.getValues().some(r => !r[0])) {
+      const lock = LockService.getScriptLock();
+      if (!lock.tryLock(10000)) throw new Error('Sistem sedang sibuk, coba lagi sebentar.');
+      try {
+        const ids = cells.getValues();
         let changed = false;
         ids.forEach(row => {
           if (!row[0]) { row[0] = Utilities.getUuid(); changed = true; }
@@ -765,19 +786,37 @@ function deleteTemplate(rowIndex) {
 //  CRUD — Manual Bills (tagihan non-recurring untuk Bill Calendar)
 // ════════════════════════════════════════════════════════════════════
 
-/**
- * Daftar tagihan manual untuk bulan tertentu (atau seluruhnya kalau month=0).
- */
-function listBills(month, year) {
+/** Baca tagihan termasuk metadata baru tanpa menggeser kolom lama. */
+function readBills_() {
   initSheets_();
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.BILL);
+  const idx = name => colIndex_(sh, name);
   const rows = getSheetDataWithRowIndex_(SHEET_NAMES.BILL);
-  let items = rows.map(({ row, rowIndex }) => ({
-    rowIndex: rowIndex,
-    dueDate: toIso_(row[0]),
-    name: row[1] || '',
-    amount: parseFloat(row[2]) || 0,
-    notes: row[3] || ''
-  })).filter(b => b.dueDate && b.name);
+  return rows.map(({ row, rowIndex }) => {
+    const timestamp = row[idx('PaidAt')] ? new Date(row[idx('PaidAt')]) : null;
+    const paidAt = timestamp && !isNaN(timestamp) ? timestamp.toISOString() : '';
+    return {
+      rowIndex: rowIndex,
+      id: String(row[idx('Id')] || ''),
+      dueDate: toIso_(row[idx('DueDate')]),
+      name: row[idx('Name')] || '',
+      amount: parseFloat(row[idx('Amount')]) || 0,
+      notes: row[idx('Notes')] || '',
+      wallet: String(row[idx('Wallet')] || ''),
+      paidAt: paidAt,
+      paid: !!paidAt
+    };
+  }).filter(b => b.dueDate && b.name);
+}
+
+function validBillDate_(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const d = new Date(value + 'T12:00:00Z');
+  return !isNaN(d) && d.toISOString().slice(0, 10) === value;
+}
+
+function listBills(month, year) {
+  let items = readBills_();
 
   if (month && year) {
     const m = parseInt(month, 10), y = parseInt(year, 10);
@@ -794,26 +833,82 @@ function listBills(month, year) {
 function addBill(data) {
   initSheets_();
   const name = String(data.name || '').trim();
-  const date = data.dueDate || data.date;
-  if (!name || !date) return { success: false, error: 'Nama & tanggal jatuh tempo wajib diisi.' };
-  SpreadsheetApp.getActiveSpreadsheet()
-    .getSheetByName(SHEET_NAMES.BILL)
-    .appendRow([
-      date,
-      name,
-      Number(data.amount) || 0,
-      data.notes || '',
-      new Date()
-    ]);
+  const date = String(data.dueDate || data.date || '');
+  const amount = Number(data.amount);
+  if (!name || !validBillDate_(date) ||
+      !Number.isFinite(amount) || amount <= 0)
+    return { success: false, error: 'Nama, tanggal, dan jumlah tagihan positif wajib diisi.' };
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.BILL);
+  const wallet = String(data.wallet || '').trim();
+  if (wallet && !Object.prototype.hasOwnProperty.call(calculateWalletBalances_().walletBalances, wallet))
+    return { success: false, error: 'Dompet tidak ditemukan.' };
+  const row = new Array(sh.getLastColumn()).fill('');
+  const set = (name, value) => { row[colIndex_(sh, name)] = value; };
+  set('DueDate', date);
+  set('Name', name);
+  set('Amount', amount);
+  set('Notes', String(data.notes || ''));
+  set('CreatedAt', new Date());
+  set('Wallet', wallet);
+  set('PaidAt', data.paid === true ? new Date() : '');
+  set('Id', Utilities.getUuid());
+  sh.appendRow(row);
   invalidateCache_();
   return { success: true, msg: 'Tagihan "' + name + '" ditambahkan 📅' };
 }
 
-function deleteBill(rowIndex) {
+function updateBill(data) {
+  initSheets_();
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.BILL);
+  const idIdx = colIndex_(sh, 'Id');
+  const id = String(data.id || '');
+  const rows = getSheetDataWithRowIndex_(SHEET_NAMES.BILL);
+  const found = rows.find(item => String(item.row[idIdx]) === id && id);
+  if (!found) return { success: false, error: 'Tagihan tidak ditemukan. Muat ulang data.' };
+  const row = found.rowIndex;
+  const fields = {};
+  if (data.name !== undefined) {
+    fields.Name = String(data.name).trim();
+    if (!fields.Name) return { success: false, error: 'Nama tagihan wajib diisi.' };
+  }
+  if (data.dueDate !== undefined) {
+    fields.DueDate = String(data.dueDate);
+    if (!validBillDate_(fields.DueDate))
+      return { success: false, error: 'Tanggal jatuh tempo tidak valid.' };
+  }
+  if (data.amount !== undefined) {
+    fields.Amount = Number(data.amount);
+    if (!Number.isFinite(fields.Amount) || fields.Amount <= 0)
+      return { success: false, error: 'Jumlah tagihan harus positif.' };
+  }
+  if (data.notes !== undefined) fields.Notes = String(data.notes || '');
+  if (data.wallet !== undefined) {
+    fields.Wallet = String(data.wallet || '').trim();
+    if (fields.Wallet && !Object.prototype.hasOwnProperty.call(calculateWalletBalances_().walletBalances, fields.Wallet))
+      return { success: false, error: 'Dompet tidak ditemukan.' };
+  }
+  if (data.paid !== undefined) {
+    if (typeof data.paid !== 'boolean') return { success: false, error: 'Status lunas tidak valid.' };
+    const currentPaidAt = found.row[colIndex_(sh, 'PaidAt')];
+    fields.PaidAt = data.paid ? (currentPaidAt && !isNaN(new Date(currentPaidAt)) ? currentPaidAt : new Date()) : '';
+  }
+  Object.keys(fields).forEach(name => sh.getRange(row, colIndex_(sh, name) + 1).setValue(fields[name]));
+  if (Object.keys(fields).length) invalidateCache_();
+  return { success: true, msg: 'Tagihan diperbarui. Status lunas tidak mencatat pengeluaran otomatis.' };
+}
+
+function deleteBill(rowIndex, id) {
+  initSheets_();
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.BILL);
   if (!sh) throw new Error('Sheet Bills tidak ditemukan');
-  const row = parseInt(rowIndex, 10);
-  if (!row || row < 2) throw new Error('Index baris tidak valid');
+  let row = parseInt(rowIndex, 10);
+  if (id) {
+    const idx = colIndex_(sh, 'Id');
+    const found = getSheetDataWithRowIndex_(SHEET_NAMES.BILL)
+      .find(item => String(item.row[idx]) === String(id));
+    row = found ? found.rowIndex : 0;
+  }
+  if (!row || row < 2 || row > sh.getLastRow()) throw new Error('Tagihan tidak ditemukan. Muat ulang data.');
   sh.deleteRow(row);
   invalidateCache_();
   return { success: true, msg: 'Tagihan dihapus 🗑️' };
@@ -1355,17 +1450,12 @@ function getDashboardData(month, year, options) {
 
   // ── Subscription Detector & Upcoming Bills ──
   const subscriptions = detectSubscriptions_(allExp);
-  const upcomingBills = subscriptions.filter(s => s.daysLeft != null && s.daysLeft <= 7 && !s.paidThisMonth);
+  const upcomingBills = subscriptions.filter(s => s.daysLeft != null && s.daysLeft >= 0 &&
+    s.daysLeft <= 7 && !s.paidForNextDate);
 
   // ── Manual Bills (sheet Bills) untuk bulan ini ──
-  const allManualBills = getSheetDataWithRowIndex_(SHEET_NAMES.BILL);
-  const manualBillsThisMonth = allManualBills.map(({ row, rowIndex }) => ({
-    rowIndex: rowIndex,
-    dueDate: toIso_(row[0]),
-    name: row[1] || '',
-    amount: parseFloat(row[2]) || 0,
-    notes: row[3] || ''
-  })).filter(b => {
+  const allManualBills = readBills_();
+  const manualBillsThisMonth = allManualBills.filter(b => {
     if (!b.dueDate) return false;
     const d = new Date(b.dueDate);
     return !isNaN(d) && d.getFullYear() === year && (d.getMonth() + 1) === month;
@@ -1385,7 +1475,7 @@ function getDashboardData(month, year, options) {
       type: 'subscription',
       name: s.name,
       amount: s.avgAmount || s.lastAmount || 0,
-      paid: !!s.paidThisMonth
+      paid: !!s.paidForNextDate
     });
   });
   // b. Manual bills bulan ini
@@ -1393,12 +1483,19 @@ function getDashboardData(month, year, options) {
     const dt = new Date(b.dueDate);
     const di = dt.getDate() - 1;
     if (di < 0 || di >= days) return;
+    // Satu tagihan yang dicatat manual tidak boleh dihitung lagi dari prediksi pola.
+    const normalized = String(b.name).trim().toLowerCase();
+    calendarDays[di].items = calendarDays[di].items.filter(it =>
+      it.type !== 'subscription' || String(it.name).trim().toLowerCase() !== normalized);
     calendarDays[di].items.push({
       type: 'manual',
       rowIndex: b.rowIndex,
       name: b.name,
       amount: b.amount,
-      notes: b.notes
+      notes: b.notes,
+      id: b.id,
+      wallet: b.wallet,
+      paid: b.paid
     });
   });
   // Hitung total per hari
@@ -1407,8 +1504,21 @@ function getDashboardData(month, year, options) {
   });
   // Total komitmen tersisa = sum bills dari hari ini sampai akhir bulan (yang belum 'paid')
   const todayD = new Date();
-  const isCurMonth = (todayD.getFullYear() === year && (todayD.getMonth() + 1) === month);
-  const startDay = isCurMonth ? todayD.getDate() : 1;
+  // Hanya dashboard bulan berjalan mendapat jendela 7 hari melintasi batas bulan.
+  const anchor = Utilities.formatDate(todayD, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const isCurMonth = (Number(anchor.slice(0, 4)) === year && Number(anchor.slice(5, 7)) === month);
+  const todayDay = Number(anchor.slice(8, 10));
+  const startWindow = new Date(anchor + 'T12:00:00Z');
+  const endWindow = new Date(startWindow);
+  const overdueWindow = new Date(startWindow);
+  endWindow.setUTCDate(endWindow.getUTCDate() + 7);
+  overdueWindow.setUTCDate(overdueWindow.getUTCDate() - 7);
+  const endIso = endWindow.toISOString().slice(0, 10);
+  const overdueIso = overdueWindow.toISOString().slice(0, 10);
+  const manualBillsForPriorities = isCurMonth
+    ? allManualBills.filter(b => b.dueDate >= overdueIso && b.dueDate <= endIso)
+    : [];
+  const startDay = isCurMonth ? todayDay : 1;
   let remainingCommitment = 0;
   let remainingCount = 0;
   for (let d = startDay; d <= days; d++) {
@@ -1425,7 +1535,7 @@ function getDashboardData(month, year, options) {
     days: calendarDays,
     remainingCommitment: remainingCommitment,
     remainingCount: remainingCount,
-    daysLeftInMonth: isCurMonth ? Math.max(0, days - todayD.getDate() + 1) : days
+    daysLeftInMonth: isCurMonth ? Math.max(0, days - todayDay + 1) : days
   };
 
   // ── Burn Rate & Runway (pakai liquid) ──
@@ -1517,7 +1627,7 @@ function getDashboardData(month, year, options) {
     legacySavingsCount,
     upcomingBills,
     subscriptions,
-    manualBills: manualBillsThisMonth,
+    manualBills: manualBillsForPriorities,
     calendar: calendar,
     categoryBudgets: categoryBudgets,
     streak: streak,
@@ -1689,13 +1799,17 @@ function detectSubscriptions_(allExp) {
     const avgAmount = g.amounts.reduce((s, n) => s + n, 0) / g.amounts.length;
 
     // predict next ≈ last + 1 bulan
-    const nextDate = new Date(last);
-    nextDate.setMonth(nextDate.getMonth() + 1);
+    // 31 Januari → hari terakhir Februari, bukan melompat ke Maret.
+    const nextMonthLastDay = new Date(last.getFullYear(), last.getMonth() + 2, 0).getDate();
+    const nextDate = new Date(last.getFullYear(), last.getMonth() + 1,
+      Math.min(last.getDate(), nextMonthLastDay));
     const diffDays = Math.ceil((nextDate - today) / (1000 * 60 * 60 * 24));
 
     // sudah dibayar bulan ini?
     const curMonthKey = today.getFullYear() + '-' + (today.getMonth() + 1);
     const paidThisMonth = !!months[curMonthKey];
+    const nextMonthKey = nextDate.getFullYear() + '-' + (nextDate.getMonth() + 1);
+    const paidForNextDate = !!months[nextMonthKey];
 
     out.push({
       name: g.name,
@@ -1710,6 +1824,7 @@ function detectSubscriptions_(allExp) {
       nextDateLabel: Utilities.formatDate(nextDate, Session.getScriptTimeZone(), 'd MMM'),
       daysLeft: diffDays,
       paidThisMonth: paidThisMonth,
+      paidForNextDate: paidForNextDate,
       // legacy field for compatibility
       date: Utilities.formatDate(nextDate, Session.getScriptTimeZone(), 'd MMM'),
       amount: lastAmount
