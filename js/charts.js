@@ -348,6 +348,64 @@
   }
 
   // ────────────────────────────────────────────────────────────────
+  //  Perbandingan nilai akhir kondisi dasar dan skenario. Keduanya simulasi.
+  // ────────────────────────────────────────────────────────────────
+  function renderScenario(canvasId, rows) {
+    const el = document.getElementById(canvasId);
+    if (!el) return;
+    destroy(canvasId);
+    const ctx = el.getContext('2d');
+    charts[canvasId] = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: rows.map(r => r.label),
+        datasets: [
+          {
+            label: 'Kondisi dasar',
+            data: rows.map(r => r.baseline),
+            borderColor: '#818cf8',
+            borderDash: [6, 4],
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            tension: 0.15
+          },
+          {
+            label: 'Skenario',
+            data: rows.map(r => r.scenario),
+            borderColor: '#00e5b4',
+            borderWidth: 2.5,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            tension: 0.15
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            display: true, position: 'bottom',
+            labels: { color: '#94a3b8', boxWidth: 12, font: { size: 11 } }
+          },
+          tooltip: Object.assign({}, TOOLTIP_BASE, {
+            displayColors: true,
+            callbacks: { label: item => ' ' + item.dataset.label + ': ' + fmtRp(item.raw) }
+          })
+        },
+        scales: {
+          x: { grid: { color: 'rgba(255,255,255,0.04)' },
+            ticks: { color: '#64748b', maxTicksLimit: 7 } },
+          y: { grid: { color: 'rgba(255,255,255,0.04)' },
+            ticks: { color: '#64748b', callback: v => fmtRpShort(v) } }
+        }
+      }
+    });
+  }
+
+  // ────────────────────────────────────────────────────────────────
   //  Asset Allocation
   // ────────────────────────────────────────────────────────────────
   function renderAllocation(canvasId, allocation) {
@@ -367,6 +425,7 @@
     renderGauge,
     renderSparkline,
     renderForecast,
+    renderScenario,
     renderAllocation,
     // Exposed read-only supaya tab-navigation.js bisa resize() chart yang
     // baru terlihat setelah sebelumnya display:none (Chart.js salah hitung

@@ -29,7 +29,10 @@
   const store = MT.store;
   const state = MT.state;
   const charts = MT.charts;
+  const scenarios = MT.scenarios;
   let goalLoadSeq = 0;
+  let scenarioTouched = false;
+  let scenarioBaseline = null;
 
   // ────────────────────────────────────────────────────────────────
   //  CATEGORIES (dynamically loaded from backend, single source of truth)
@@ -148,6 +151,7 @@
     setupCurrencyMasks();
     setupFab();
     setupSearch();
+    setupScenarioEvents();
 
     // Load kategori dari cache lokal dulu (instan), lalu fetch terbaru di background
     const cachedCats = store.getCachedCategories();
@@ -503,6 +507,7 @@
       store.setGoals(cached);
       renderGoals(cached);
       renderGoalOptions();
+      renderScenarioGoalOptions();
     }
     const res = await api.listGoals();
     if (seq !== goalLoadSeq) return;
@@ -510,6 +515,7 @@
       store.setGoals(res.goals || []);
       renderGoals(res.goals || []);
       renderGoalOptions();
+      renderScenarioGoalOptions();
     }
   }
 
@@ -522,6 +528,18 @@
       if (g.id) select.add(new Option(g.name || 'Tujuan', g.id));
     });
     if (Array.from(select.options).some(o => o.value === current)) select.value = current;
+  }
+
+  function renderScenarioGoalOptions() {
+    const select = $('scGoal');
+    if (!select) return;
+    const current = select.value;
+    select.replaceChildren(new Option('Tanpa tujuan', ''));
+    (state.goals || []).forEach(g => {
+      if (g.id) select.add(new Option(g.name || 'Tujuan', g.id));
+    });
+    if (Array.from(select.options).some(o => o.value === current)) select.value = current;
+    if (state.dashboard) renderScenarioPlanner(state.dashboard);
   }
 
   async function loadTransactions() {
@@ -558,6 +576,7 @@
     renderBudgeting(d.budgeting);
     renderNetWorth(d.netWorth, d.ratios);
     renderForecast(d.forecast, d.sixMonths, d.burn);
+    renderScenarioPlanner(d);
     renderSubscriptions(d.subscriptions || [], d.upcomingBills || []);
     renderSixMonths(d.sixMonths);
     updateBudgetRuleLabels(d.budgeting);
@@ -1025,6 +1044,107 @@
       $('burnRate').textContent = fmtRpShort(burn.dailyExpense);
       $('incomeRate').textContent = fmtRpShort(burn.dailyIncome);
     }
+  }
+
+  function setupScenarioEvents() {
+    const controls = document.querySelectorAll('.scenario-fields input, .scenario-fields select');
+    const recalculate = debounce(() => renderScenarioPlanner(state.dashboard), 120);
+    controls.forEach(control => {
+      const onChange = () => {
+        scenarioTouched = true;
+        recalculate();
+      };
+      control.addEventListener('input', onChange);
+      control.addEventListener('change', onChange);
+    });
+    $('btnResetScenario').addEventListener('click', () => {
+      scenarioTouched = false;
+      ['scIncomeChange', 'scExpenseChange', 'scOneTimeExpense', 'scGoalMonthly'].forEach(id => { $(id).value = ''; });
+      $('scIncomeDirection').value = 'increase';
+      $('scExpenseDirection').value = 'decrease';
+      $('scHorizon').value = '12';
+      $('scGoal').value = '';
+      renderScenarioPlanner(state.dashboard);
+    });
+  }
+
+  function renderScenarioPlanner(d) {
+    if (!d || !d.netWorth || !scenarios) return;
+    const today = new Date();
+    if (!scenarioBaseline ||
+        (!scenarioTouched && state.currentMonth === today.getMonth() + 1 &&
+          state.currentYear === today.getFullYear())) {
+      scenarioBaseline = scenarios.deriveBaseline(d.sixMonths || [], today);
+    }
+    const baseline = scenarioBaseline;
+    if (!scenarioTouched) {
+      $('scBaseIncome').value = baseline.income ? baseline.income.toLocaleString('id-ID') : '';
+      $('scBaseExpense').value = baseline.expenses ? baseline.expenses.toLocaleString('id-ID') : '';
+    }
+    $('scenarioStatus').textContent = baseline.monthsUsed
+      ? 'Angka dasar otomatis memakai nilai tengah dari ' + baseline.monthsUsed +
+        ' bulan selesai (' + baseline.incomeMonths + ' bulan ada pemasukan, ' +
+        baseline.expenseMonths + ' bulan ada pengeluaran). Anda bisa mengubahnya.'
+      : 'Belum ada data bulan selesai. Isi sendiri pemasukan dan pengeluaran dasar untuk membuat simulasi.';
+    const goal = (state.goals || []).find(g => g.id === $('scGoal').value) || null;
+    const input = {
+      startNetWorth: d.netWorth.netWorth,
+      income: parseRp($('scBaseIncome').value),
+      expenses: parseRp($('scBaseExpense').value),
+      incomeChange: parseRp($('scIncomeChange').value),
+      expenseChange: parseRp($('scExpenseChange').value),
+      incomeDirection: $('scIncomeDirection').value,
+      expenseDirection: $('scExpenseDirection').value,
+      oneTimeExpense: parseRp($('scOneTimeExpense').value),
+      horizon: Number($('scHorizon').value),
+      goalMonthly: parseRp($('scGoalMonthly').value),
+      goal
+    };
+    let result;
+    try {
+      result = scenarios.simulate(input);
+    } catch (error) {
+      $('scenarioResults').innerHTML = '<div class="scenario-note warn">' + escapeHtml(error.message) + '</div>';
+      charts.destroy('scenarioChart');
+      return;
+    }
+    const deltaClass = result.difference >= 0 ? 'positive' : 'negative';
+    const warnings = [];
+    if (baseline.monthsUsed < 2) warnings.push('Data historis terbatas; periksa angka dasar sebelum memakai hasil.');
+    if (!baseline.incomeMonths || !baseline.expenseMonths) {
+      warnings.push('Salah satu angka dasar tidak memiliki catatan bulan selesai; isi asumsi yang realistis.');
+    }
+    if (goal && result.goalExceedsSurplus) warnings.push('Rencana setoran melampaui surplus bulanan; selisihnya harus berasal dari saldo yang sudah ada.');
+    if (input.goalMonthly > 0 && !goal) warnings.push('Pilih tujuan agar progres setoran ikut disimulasikan.');
+    if (input.oneTimeExpense > Math.max(0, Number(d.netWorth.liquidAssets) || 0)) {
+      warnings.push('Pengeluaran sekali lebih besar dari aset likuid saat ini; siapkan sumber dana yang jelas.');
+    }
+    $('scenarioResults').innerHTML = `
+      <div class="scenario-result">
+        <div class="scenario-result-label">Kondisi dasar · ${input.horizon} bulan</div>
+        <div class="scenario-result-value">${fmtRp(result.baselineEnd)}</div>
+      </div>
+      <div class="scenario-result">
+        <div class="scenario-result-label">Dengan skenario</div>
+        <div class="scenario-result-value">${fmtRp(result.scenarioEnd)}</div>
+      </div>
+      <div class="scenario-result">
+        <div class="scenario-result-label">Selisih dari kondisi dasar</div>
+        <div class="scenario-result-value ${deltaClass}">${result.difference > 0 ? '+' : ''}${fmtRp(result.difference)}</div>
+      </div>
+      <div class="scenario-note">Surplus bulanan: kondisi dasar ${fmtRp(result.baseSurplus)} → skenario ${fmtRp(result.scenarioSurplus)}.
+        Pengeluaran sekali dipotong pada bulan pertama. Setoran tujuan tidak dihitung sebagai beban kekayaan bersih.</div>
+      ${goal && result.goalProjected != null ? `<div class="scenario-note">
+        Tujuan <b>${escapeHtml(goal.name)}</b>: ${fmtRp(goal.saved || 0)} → ${fmtRp(result.goalProjected)}
+        dari target nominal ${fmtRp(goal.target)}. Sisa ${fmtRp(result.goalRemaining)}.
+        ${result.goalMonthsToTarget === 0 ? 'Tujuan sudah tercapai menurut catatan saat ini.'
+          : result.goalMonthsToTarget != null ? 'Perkiraan tercapai dalam ' + result.goalMonthsToTarget + ' bulan jika setoran konsisten.'
+            : 'Tambahkan rencana setoran untuk melihat waktu pencapaian.'}
+        ${goal.inflationSensitive ? 'Target ini peka inflasi; simulasi memakai target nominal tanpa kenaikan harga.' : ''}
+      </div>` : ''}
+      ${warnings.map(w => '<div class="scenario-note warn">' + escapeHtml(w) + '</div>').join('')}
+    `;
+    charts.renderScenario('scenarioChart', result.rows);
   }
 
   // ── Subscriptions & Upcoming ──

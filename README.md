@@ -154,3 +154,24 @@ ada backfill otomatis untuk bulan sebelum snapshot pertama karena nilai aset,
 utang, serta koreksi saldo pada tanggal lama tidak dapat dipastikan dari data
 terkini. Nilai snapshot menggambarkan isi aplikasi pada saat pencatatan, bukan
 verifikasi independen atas rekening atau nilai pasar aset.
+
+## 🧭 Simulasi Skenario Keuangan
+
+Di tab **Perencanaan → Simulasi Skenario Keuangan**, bandingkan proyeksi kekayaan
+bersih kondisi dasar dengan perubahan pendapatan, pengeluaran, biaya sekali,
+dan jangka waktu 6–60 bulan. Angka dasar diisi dari nilai tengah bulan-bulan
+yang sudah selesai dalam enam bulan terakhir; bulan berjalan yang belum penuh
+tidak dijadikan dasar. Anda dapat mengubah semua angka dasar saat datanya
+belum lengkap atau berbeda dari rencana ke depan.
+
+Pilih tujuan serta rencana setoran per bulan untuk melihat progres nominalnya.
+Setoran antar dompet **tidak** mengubah total kekayaan bersih; jika setoran
+melampaui surplus bulanan, aplikasi memberi peringatan bahwa selisih harus
+didanai dari saldo yang sudah ada. Pengeluaran sekali dipotong pada bulan
+pertama. Simulasi menganggap nominal bulanan tetap, tanpa inflasi, imbal hasil,
+kenaikan harga aset, dan perubahan utang di luar biaya yang dimasukkan.
+Hasilnya adalah contoh berdasarkan asumsi, bukan jaminan atau instruksi transaksi.
+
+Fitur ini hanya mengubah berkas frontend (`index.html`, `styles.css`,
+`js/*.js`, `sw.js`); jika backend dari tahap sebelumnya sudah aktif, tidak
+perlu memperbarui `Code.gs` untuk memakai simulasi.

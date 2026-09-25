@@ -22,7 +22,7 @@
   const CHARTS_BY_TAB = {
     'tab-dashboard': [],
     'tab-analytics': ['dailyChart', 'pieChart', 'forecastChart'],
-    'tab-planning': ['needsDonut', 'wantsDonut', 'investDonut', 'nwSparkline', 'allocChart'],
+    'tab-planning': ['needsDonut', 'wantsDonut', 'investDonut', 'nwSparkline', 'allocChart', 'scenarioChart'],
     'tab-profile': []
   };
 
