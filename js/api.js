@@ -12,7 +12,7 @@
 
   const MT = (window.MT = window.MT || {});
 
-  const API_URL = 'https://script.google.com/macros/s/AKfycbxodxup2bHbF3W_rTvg2zCz7wTzAzc8dLzPYtN5u9L5AtR3J51Cy8dIe8mNgofLbF_y/exec';
+  const API_URL = 'https://script.google.com/macros/s/AKfycbxDgJOZjbs3OU6_KvhaPrHZHT_qQK0qpDElFYlwIe8mLKl-scRYZbEuOnf7twnJziEc7Q/exec';
 
   const DEFAULT_TIMEOUT_MS = 30000;
   const MAX_RETRIES = 2;
@@ -118,6 +118,7 @@
   const listBills = (month, year) => call('listBills', { month, year });
   const listWallets = () => call('listWallets', {});
   const listWalletReconciliations = () => call('listWalletReconciliations', {});
+  const listNetWorthSnapshots = () => call('listNetWorthSnapshots', {});
   const listTransfers = (month, year) => call('listTransfers', { month, year });
   const getAuthStatus = () => call('getAuthStatus', {}, { retries: 0, timeoutMs: 8000 });
 
@@ -134,6 +135,7 @@
   const addWallet = (data) => call('addWallet', data);
   const recordWalletReconciliation = (data) => call('recordWalletReconciliation', data);
   const applyWalletAdjustment = (id, notes) => call('applyWalletAdjustment', { id, notes });
+  const recordNetWorthSnapshot = (notes) => call('recordNetWorthSnapshot', { notes });
   const addTransfer = (data) => call('addTransfer', data);
 
   // ── Update ──
@@ -167,9 +169,10 @@
   MT.api = {
     API_URL, call, getSecret, setSecret,
     getDashboardData, listRecentTransactions, listGoals, getSettings, getCategories,
-    listTemplates, listBills, listWallets, listWalletReconciliations, listTransfers, getAuthStatus,
+    listTemplates, listBills, listWallets, listWalletReconciliations, listNetWorthSnapshots, listTransfers, getAuthStatus,
     addIncome, addExpense, addSaving, addAsset, addDebt, addGoal, addGoalDeposit,
     addTemplate, addBill, addWallet, addTransfer, recordWalletReconciliation, applyWalletAdjustment,
+    recordNetWorthSnapshot,
     editTransaction, updateGoal, updateDebt, updateWallet, saveSettings, saveAppSecret,
     deleteTransaction, deleteWealthItem, deleteGoal, deleteTemplate, deleteBill,
     deleteWallet, deleteTransfer,

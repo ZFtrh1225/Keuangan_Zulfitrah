@@ -854,10 +854,14 @@
     nwEl.textContent = (nw.netWorth < 0 ? '-' : '') + fmtRp(Math.abs(nw.netWorth));
     nwEl.style.color = nw.netWorth < 0 ? 'var(--red)' : 'var(--accent)';
 
-    // sparkline
-    if (nw.netWorthHistory && nw.netWorthHistory.length) {
-      charts.renderSparkline('nwSparkline', nw.netWorthHistory, '#00e5b4');
-    }
+    // Garis hanya menghubungkan snapshot yang benar-benar pernah disimpan.
+    const history = nw.netWorthHistory || [];
+    const recorded = history.filter(p => p.source === 'snapshot');
+    charts.renderSparkline('nwSparkline', history, '#00e5b4');
+    $('nwSnapshotInfo').textContent = recorded.length
+      ? recorded.length + ' bulan tercatat · terakhir ' + recorded[recorded.length - 1].label +
+        '. Bulan tanpa catatan menjadi jeda pada grafik.'
+      : 'Belum ada snapshot. Angka historis yang dulu ditaksir dari arus kas tidak ditampilkan sebagai nilai pasti.';
 
     // Ratios
     setRatio('ratioSavings', 'ratioSavingsStatus', rt.savingsRate, '%', [
@@ -1799,17 +1803,19 @@
     const pInvest = inc > 0 ? (d.budgeting.invest / inc * 100).toFixed(1) : '0.0';
 
     // ── Net Worth trend (banding bulan ini vs sebelum) ──
-    const nwHist = (d.netWorth && d.netWorth.netWorthHistory) || [];
-    let nwTrend = 'tren belum tersedia';
+    const nwHist = ((d.netWorth && d.netWorth.netWorthHistory) || [])
+      .filter(p => p.source === 'snapshot' && Number.isFinite(p.value));
+    let nwTrend = 'belum ada dua snapshot kekayaan bersih untuk dibandingkan';
     if (nwHist.length >= 2) {
       const cur = nwHist[nwHist.length - 1].value;
       const prev = nwHist[nwHist.length - 2].value;
       if (prev !== 0) {
         const diffPct = ((cur - prev) / Math.abs(prev) * 100);
         const arrow = diffPct > 0.5 ? 'naik' : diffPct < -0.5 ? 'turun' : 'stabil';
+        const previous = nwHist[nwHist.length - 2].label;
         nwTrend = arrow === 'stabil'
-          ? 'stabil dibanding bulan lalu'
-          : `${arrow} ${Math.abs(diffPct).toFixed(1)}% dibanding bulan lalu`;
+          ? `stabil dibanding catatan ${previous}`
+          : `${arrow} ${Math.abs(diffPct).toFixed(1)}% dibanding catatan ${previous}`;
       }
     }
 
@@ -2457,6 +2463,47 @@
   });
 
   // ════════════════════════════════════════════════════════════════
+  //  RIWAYAT KEKAYAAN — snapshot yang dibuat saat ini, tanpa backdate
+  // ════════════════════════════════════════════════════════════════
+  async function openNetWorthHistory() {
+    openModal('netWorthHistoryOverlay');
+    const nw = state.dashboard && state.dashboard.netWorth;
+    $('nwHistoryCurrent').textContent = nw
+      ? 'Saat ini menurut aplikasi: aset ' + fmtRp(nw.totalAssets) +
+        ' − utang ' + fmtRp(nw.totalDebts) + ' = ' + fmtRp(nw.netWorth)
+      : 'Memuat nilai kekayaan saat ini…';
+    $('nwHistoryList').textContent = 'Memuat riwayat…';
+    const res = await api.listNetWorthSnapshots();
+    if (!res.success) {
+      $('nwHistoryList').textContent =
+        'Riwayat belum tersedia. Perbarui dan deploy Code.gs sebelum memakai fitur ini.';
+      return;
+    }
+    const snapshots = res.snapshots || [];
+    $('nwHistoryList').innerHTML = snapshots.length ? snapshots.map(s => {
+      const clock = new Date(s.recordedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+      return `<div class="nw-history-item">
+        <div class="nw-history-row"><strong>${fmtRp(s.netWorth)}</strong><span>${fmtDateLong(s.date)} · ${clock}</span></div>
+        <div>Aset ${fmtRp(s.totalAssets)} · Utang ${fmtRp(s.totalDebts)}</div>
+        <div>Saldo dompet ${fmtRp(s.walletTotal)} · Aset likuid ${fmtRp(s.liquidAssets)}</div>
+        ${s.notes ? `<div class="muted micro-label">${escapeHtml(s.notes)}</div>` : ''}
+      </div>`;
+    }).join('') : '<div class="muted micro-label">Belum ada catatan. Mulai dengan menyimpan kondisi hari ini.</div>';
+  }
+
+  async function recordNetWorthNow() {
+    await submitWithGuard(async () => {
+      const res = await api.recordNetWorthSnapshot($('nwSnapshotNotes').value.trim());
+      if (!res.success) return showToast(res.error || 'Gagal menyimpan snapshot.', 'error');
+      showToast(res.msg, 'success');
+      $('nwSnapshotNotes').value = '';
+      store.invalidateAllCache();
+      await loadDashboard();
+      await openNetWorthHistory();
+    }, 'btnRecordNetWorthSnapshot', 'Mencatat…');
+  }
+
+  // ════════════════════════════════════════════════════════════════
   //  WALLETS — Saldo Awal + Daftar Dompet
   // ════════════════════════════════════════════════════════════════
   async function openWalletsModal() {
@@ -3060,6 +3107,8 @@
     wire('btnTransfer', openTransferModal);
     wire('btnAuth', openAuthModal);
     wire('btnWallets', openWalletsModal);
+    wire('btnNetWorthHistory', openNetWorthHistory);
+    wire('btnRecordNetWorthSnapshot', recordNetWorthNow);
 
     // Settings modal section: tombol ke fitur turunan
     wire('settingsBtnAuth', () => { closeModal('settingsModalOverlay'); openAuthModal(); });

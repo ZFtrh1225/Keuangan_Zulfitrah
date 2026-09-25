@@ -133,3 +133,24 @@ bersih tanpa mengubah saldo awal atau menciptakan pemasukan/pengeluaran palsu.
 Jika ada transaksi baru atau saldo pembukuan berubah sejak pengecekan,
 penyesuaian lama ditolak dan Anda harus mencatat pengecekan baru. Jika koreksi
 keliru, catat pengecekan baru lalu buat penyesuaian balik; riwayat tetap utuh.
+
+## 📅 Riwayat Kekayaan Bersih Tercatat
+
+Deploy `Code.gs` dari pembaruan ini **sebelum** frontend. Sheet baru
+`NetWorthSnapshots` dibuat otomatis; data lama tetap ada. Di kartu **Kekayaan
+Bersih**, buka **Riwayat & Catat Sekarang** lalu simpan snapshot setelah memastikan
+saldo dompet, nilai aset, dan utang sudah mutakhir. Tanggal dan waktu diambil
+oleh backend saat tombol ditekan; snapshot tidak bisa diberi tanggal lampau.
+Anda dapat mencatat ulang pada hari yang sama bila nilainya berubah; bila semua
+angka sama, klik berulang tidak membuat duplikat. Catat minimal sekali per
+bulan untuk membentuk grafik bulanan.
+
+Grafik kekayaan bersih kini hanya memakai **snapshot yang sungguh tersimpan**,
+satu titik terakhir untuk setiap bulan (maksimal 12 bulan); bulan tanpa catatan
+menjadi jeda, sedangkan popup
+menampilkan semua snapshot terbaru beserta tanggal dan rinciannya. Perkiraan
+historis lama dari arus kas tidak lagi ditampilkan sebagai nilai pasti. Tidak
+ada backfill otomatis untuk bulan sebelum snapshot pertama karena nilai aset,
+utang, serta koreksi saldo pada tanggal lama tidak dapat dipastikan dari data
+terkini. Nilai snapshot menggambarkan isi aplikasi pada saat pencatatan, bukan
+verifikasi independen atas rekening atau nilai pasar aset.
