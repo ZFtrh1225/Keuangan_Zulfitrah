@@ -2462,9 +2462,13 @@
   async function openWalletsModal() {
     openModal('walletsModalOverlay');
     $('walletsList').innerHTML = '<div class="empty-state">Memuat dompet…</div>';
-    const res = await api.listWallets();
-    state.walletsList = (res && res.wallets) || [];
+    $('reconciliationHistory').textContent = 'Memuat riwayat…';
+    const [res, checks] = await Promise.all([api.listWallets(), api.listWalletReconciliations()]);
+    state.walletsList = res.success ? res.wallets || [] : [];
+    if (checks.success) state.wallets = checks.balances || {};
     renderWalletsList();
+    if (!res.success) showToast('Gagal memuat dompet: ' + (res.error || 'periksa backend'), 'error');
+    renderReconciliations(checks);
   }
 
   function renderWalletsList() {
@@ -2527,6 +2531,93 @@
         } else showToast('Gagal: ' + res.error, 'error');
       });
     });
+  }
+
+  function renderReconciliations(res) {
+    const history = $('reconciliationHistory');
+    const select = $('reconcileWallet');
+    if (!res.success) {
+      history.textContent = 'Riwayat belum tersedia. Pastikan Code.gs versi terbaru sudah di-deploy.';
+      $('reconcileStatus').textContent = '';
+      select.replaceChildren(new Option('Dompet belum tersedia', ''));
+      return;
+    }
+    const selected = select.value;
+    const balances = res.balances || {};
+    const names = Object.keys(balances).sort((a, b) => a.localeCompare(b));
+    select.replaceChildren(new Option('Pilih dompet', ''),
+      ...names.map(name => new Option(name, name)));
+    if (names.includes(selected)) select.value = selected;
+    const updateStatus = () => {
+      const wallet = select.value;
+      const label = $('reconcileStatus');
+      if (!wallet) { label.textContent = 'Pilih dompet untuk melihat saldo aplikasi.'; return; }
+      const actualText = $('reconcileActual').value.trim();
+      const valid = /^-?\d+(?:\.\d{3})*$/.test(actualText);
+      label.textContent = 'Saldo aplikasi ' + fmtRp(balances[wallet]) +
+        (valid ? ' · Selisih sementara ' + fmtRp(parseRp(actualText) - balances[wallet]) : '');
+    };
+    select.onchange = updateStatus;
+    $('reconcileActual').oninput = updateStatus;
+    updateStatus();
+    const records = res.records || [];
+    history.innerHTML = records.length ? records.map(r => {
+      const stale = !r.appliedAt && balances[r.wallet] !== r.bookBalance;
+      const status = r.appliedAt ? 'Disesuaikan' : r.difference === 0 ? 'Cocok' :
+        stale ? 'Saldo berubah · perlu cek ulang' : 'Belum disesuaikan';
+      const diff = r.difference > 0 ? '+' + fmtRp(r.difference) : fmtRp(r.difference);
+      return `<div class="reconciliation-item">
+        <div class="reconciliation-head"><strong>${escapeHtml(r.wallet)}</strong><span>${fmtDateLong(r.checkedAt)}</span></div>
+        <div>Saldo aplikasi ${fmtRp(r.bookBalance)} · Saldo sebenarnya ${fmtRp(r.actualBalance)}</div>
+        <div>Selisih <b>${diff}</b> · ${status}</div>
+        ${r.notes ? `<div class="muted micro-label">${escapeHtml(r.notes)}</div>` : ''}
+        ${!r.appliedAt && !stale && r.difference !== 0 ?
+          `<button class="btn btn-sm" data-reconcile-apply="${escapeHtml(r.id)}">Terapkan penyesuaian</button>` : ''}
+      </div>`;
+    }).join('') : '<div class="muted micro-label">Belum ada pengecekan saldo.</div>';
+    history.querySelectorAll('[data-reconcile-apply]').forEach(button => {
+      button.addEventListener('click', async () => {
+        const item = records.find(r => r.id === button.dataset.reconcileApply);
+        if (!item) return;
+        const reason = (item.notes || $('reconcileNotes').value).trim();
+        if (!reason) return showToast('Isi alasan selisih di kolom Catatan terlebih dahulu.', 'error');
+        const ok = await MT.dialog.confirm(
+          `Terapkan penyesuaian ${fmtRp(item.difference)} untuk ${item.wallet}? Ini mengubah saldo aplikasi dan kekayaan bersih, tanpa mengubah transaksi lama.`,
+          { title: 'Penyesuaian Saldo', okLabel: 'Terapkan', icon: '🔎' }
+        );
+        if (!ok) return;
+        button.disabled = true;
+        await submitWithGuard(async () => {
+          const applied = await api.applyWalletAdjustment(item.id, reason);
+          if (!applied.success) {
+            button.disabled = false;
+            return showToast(applied.error || 'Gagal menyesuaikan saldo.', 'error');
+          }
+          showToast(applied.msg, 'success');
+          store.invalidateAllCache();
+          await loadDashboard();
+          openWalletsModal();
+        }, 'btnRecordReconciliation', 'Menerapkan…');
+      });
+    });
+  }
+
+  async function recordReconciliation() {
+    const wallet = $('reconcileWallet').value;
+    const actualText = $('reconcileActual').value.trim();
+    if (!wallet || !/^-?\d+(?:\.\d{3})*$/.test(actualText)) {
+      return showToast('Pilih dompet dan isi saldo sebenarnya dalam rupiah.', 'error');
+    }
+    await submitWithGuard(async () => {
+      const res = await api.recordWalletReconciliation({
+        wallet, actualBalance: parseRp(actualText), notes: $('reconcileNotes').value.trim()
+      });
+      if (!res.success) return showToast(res.error || 'Gagal mencatat pengecekan.', 'error');
+      showToast(res.msg, 'success');
+      $('reconcileActual').value = '';
+      $('reconcileNotes').value = '';
+      openWalletsModal();
+    }, 'btnRecordReconciliation', 'Mencatat…');
   }
 
   function openWalletForm(wallet) {
@@ -2977,6 +3068,7 @@
     // Wallet modal
     wire('btnAddWallet', () => openWalletForm(null));
     wire('btnSubmitWalletForm', submitWalletForm);
+    wire('btnRecordReconciliation', recordReconciliation);
 
     // Transfer modal
     wire('btnSubmitTransfer', submitTransfer);

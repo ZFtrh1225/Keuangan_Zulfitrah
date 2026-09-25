@@ -1927,6 +1927,35 @@ select.form-input {
 .wallet-mgmt-cur.negative { color: var(--red); }
 .wallet-mgmt-cur.zero { color: var(--t4); }
 .wallet-mgmt-actions { display: flex; gap: 4px; }
+.reconcile-panel {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.reconcile-panel h3, .reconcile-panel h4 { margin: 0; color: var(--t1); }
+.reconcile-panel p { margin: 0; line-height: 1.5; }
+.reconciliation-history { display: grid; gap: 8px; }
+.reconciliation-item {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--card2);
+  display: grid;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--t3);
+}
+.reconciliation-head {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--t1);
+}
+.reconciliation-item .btn { justify-self: start; margin-top: 4px; }
 
 /* ── 22.4 Auth modal ── */
 .auth-status-badge {

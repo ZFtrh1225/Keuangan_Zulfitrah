@@ -220,3 +220,62 @@ test('goal migration appends IDs without overwriting custom sheet columns', () =
   assert.equal(savings.rows[1][7], goal.id);
   assert.equal(app.listGoals().goals[0].saved, 150000);
 });
+
+test('wallet check records a difference without changing balances; adjustment changes them once', () => {
+  const { context: app, sheets } = backend();
+  app.addWallet({ name: 'BRI', opening: 100000, openingDate: '2026-09-01', type: 'Bank' });
+  app.addIncome({ date: '2026-09-02', type: 'Gaji', amount: 50000, source: 'BRI' });
+  const before = app.getDashboardData(9, 2026);
+  assert.equal(before.walletBalances.BRI, 150000);
+  assert.equal(before.netWorth.netWorth, 150000);
+
+  const check = app.recordWalletReconciliation({ wallet: 'BRI', actualBalance: 145000,
+    notes: 'Biaya admin bank belum jelas' });
+  assert.equal(check.success, true);
+  assert.equal(check.difference, -5000);
+  assert.equal(app.getDashboardData(9, 2026).walletBalances.BRI, 150000);
+  assert.equal(sheets.get('Wallets').rows[1][1], 100000);
+  assert.equal(sheets.get('Income').rows.length, 2);
+
+  assert.equal(app.applyWalletAdjustment({ id: check.id }).success, true);
+  const after = app.getDashboardData(9, 2026);
+  assert.equal(after.walletBalances.BRI, 145000);
+  assert.equal(after.netWorth.netWorth, 145000);
+  assert.equal(after.summary.totalInc, 50000);
+  assert.equal(after.summary.totalExp, 0);
+  assert.equal(app.applyWalletAdjustment({ id: check.id }).success, false);
+  assert.equal(app.getDashboardData(9, 2026).walletBalances.BRI, 145000);
+  const record = app.listWalletReconciliations().records[0];
+  assert.ok(record.appliedAt);
+  assert.equal(record.appliedAmount, -5000);
+});
+
+test('a newer transaction invalidates an old adjustment; a new check reconciles negative balances', () => {
+  const { context: app } = backend();
+  app.addWallet({ name: 'Cash', opening: 10000 });
+  const stale = app.recordWalletReconciliation({ wallet: 'Cash', actualBalance: 7000 });
+  app.addExpense({ date: '2026-09-02', category: 'Makanan', amount: 1000, source: 'Cash' });
+  assert.match(app.applyWalletAdjustment({ id: stale.id, notes: 'Selisih tidak diketahui' }).error,
+    /berubah sejak pengecekan/);
+  const fresh = app.recordWalletReconciliation({ wallet: 'Cash', actualBalance: -2000 });
+  assert.equal(fresh.difference, -11000);
+  assert.equal(app.applyWalletAdjustment({ id: fresh.id }).success, false);
+  assert.equal(app.applyWalletAdjustment({ id: fresh.id, notes: 'Kas fisik minus' }).success, true);
+  assert.equal(app.getDashboardData(9, 2026).walletBalances.Cash, -2000);
+  assert.equal(app.getDashboardData(9, 2026).netWorth.netWorth, -2000);
+});
+
+test('wallet checks accept zero, reject invalid input and retain custom columns', () => {
+  const { context: app, sheets } = backend();
+  app.initSheets_();
+  sheets.get('Wallets').appendRow(['BRI', 0, '', 'Bank', '', '']);
+  const log = sheets.get('WalletReconciliations');
+  log.rows[0].splice(3, 0, 'Custom');
+  assert.equal(app.recordWalletReconciliation({ wallet: 'missing', actualBalance: 0 }).success, false);
+  assert.equal(app.recordWalletReconciliation({ wallet: 'BRI', actualBalance: 'nope' }).success, false);
+  const check = app.recordWalletReconciliation({ wallet: 'BRI', actualBalance: 0 });
+  assert.equal(check.success, true);
+  assert.equal(log.rows[1][3], '');
+  assert.equal(app.listWalletReconciliations().records[0].difference, 0);
+  assert.equal(app.applyWalletAdjustment({ id: check.id }).success, false);
+});

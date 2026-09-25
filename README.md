@@ -117,3 +117,19 @@ menyimpan transaksi dan perpindahan uang.
 
 Jangan catat kembali setoran yang sama melalui form Tabungan. Setelah update,
 periksa contoh setoran kecil dan cocokkan saldo dompet serta progress tujuan.
+
+## 🔎 Pencocokan Saldo Dompet
+
+Perbarui dan deploy `Code.gs` **sebelum** menggabungkan frontend. Backend
+membuat sheet `WalletReconciliations` untuk riwayat pengecekan dan koreksi;
+sheet serta transaksi lama tidak diubah. Buka **Kelola Dompet & Saldo Awal**,
+pilih dompet, masukkan saldo rekening atau kas saat ini, lalu **Catat Pengecekan**.
+Aplikasi menyimpan saldo pembukuan saat diperiksa, saldo sebenarnya, dan selisih.
+
+Pengecekan tidak mengubah saldo. Periksa transaksi yang mungkin terlewat atau
+ganda terlebih dahulu. Jika perlu, isi alasan dan pilih **Terapkan penyesuaian**
+di riwayat. Koreksi dicatat satu kali, memengaruhi saldo dompet dan kekayaan
+bersih tanpa mengubah saldo awal atau menciptakan pemasukan/pengeluaran palsu.
+Jika ada transaksi baru atau saldo pembukuan berubah sejak pengecekan,
+penyesuaian lama ditolak dan Anda harus mencatat pengecekan baru. Jika koreksi
+keliru, catat pengecekan baru lalu buat penyesuaian balik; riwayat tetap utuh.

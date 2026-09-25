@@ -1208,6 +1208,32 @@
           <div class="empty-state">Memuat dompet…</div>
         </div>
         <button class="btn-submit btn-success" id="btnAddWallet">+ Tambah Dompet</button>
+        <section class="reconcile-panel" aria-labelledby="reconcileTitle">
+          <h3 id="reconcileTitle">🔎 Cocokkan Saldo Dompet</h3>
+          <p class="muted micro-label">Bandingkan saldo aplikasi dengan saldo rekening atau uang tunai saat ini. Pengecekan saja tidak mengubah saldo.</p>
+          <div id="reconcileStatus" class="muted micro-label" role="status"></div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="reconcileWallet">Dompet</label>
+              <select class="form-input" id="reconcileWallet"></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="reconcileActual">Saldo sebenarnya (Rp)</label>
+              <div class="amount-input-wrap">
+                <span class="amount-prefix">Rp</span>
+                <input type="text" inputmode="numeric" class="form-input" id="reconcileActual" placeholder="Misalnya 250.000 atau -50.000" />
+              </div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="reconcileNotes">Catatan / alasan selisih</label>
+            <input type="text" class="form-input" id="reconcileNotes" placeholder="Misalnya biaya admin yang belum tercatat" />
+          </div>
+          <button class="btn-submit" id="btnRecordReconciliation">Catat Pengecekan</button>
+          <p class="muted micro-label">Jika ada selisih, periksa transaksi yang terlewat atau ganda dahulu. Penyesuaian hanya untuk selisih yang belum bisa diperbaiki lewat transaksi.</p>
+          <h4>Riwayat pengecekan</h4>
+          <div id="reconciliationHistory" class="reconciliation-history">Memuat riwayat…</div>
+        </section>
       </div>
     </div>
   </div>
