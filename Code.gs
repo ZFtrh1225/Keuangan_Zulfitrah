@@ -217,7 +217,9 @@ function initSheets_() {
   const cfg = [
     { name: SHEET_NAMES.INCOME,  headers: ['Date', 'Type', 'Amount', 'Notes', 'Source'] },
     { name: SHEET_NAMES.EXPENSE, headers: ['Date', 'Category', 'Subcategory', 'Amount', 'Notes', 'Source'] },
-    { name: SHEET_NAMES.SAVING,  headers: ['Date', 'Type', 'Amount', 'Notes', 'Source'] },
+    // Destination is appended so existing rows keep their original layout.
+    // A blank Destination marks a legacy saving whose origin is unknown.
+    { name: SHEET_NAMES.SAVING,  headers: ['Date', 'Type', 'Amount', 'Notes', 'Source', 'Destination'] },
     { name: SHEET_NAMES.ASSET,   headers: ['Date', 'Type', 'Name', 'Value', 'Institution'] },
     // Debt: kolom MinPayment + InterestRate ditambahkan untuk perhitungan
     // DSR yang riil & debt-payoff calculator. Sheet lama (5 kolom) akan
@@ -308,9 +310,18 @@ function addExpense(data) {
 
 function addSaving(data) {
   initSheets_();
+  const source = String(data.source || '').trim();
+  const destination = String(data.destination || '').trim();
+  const amount = Number(data.amount);
+  if (!source || !destination || source === destination) {
+    return { success: false, error: 'Pilih dompet asal dan rekening tujuan yang berbeda.' };
+  }
+  if (!Number.isFinite(amount) || amount <= 0 || !data.date || isNaN(new Date(data.date).getTime())) {
+    return { success: false, error: 'Tanggal dan nominal tabungan harus valid (lebih dari 0).' };
+  }
   SpreadsheetApp.getActiveSpreadsheet()
     .getSheetByName(SHEET_NAMES.SAVING)
-    .appendRow([data.date, data.type, Number(data.amount), data.notes || '', data.source]);
+    .appendRow([data.date, data.type, amount, data.notes || '', source, destination]);
   invalidateCache_();
   return { success: true, msg: 'Tabungan berhasil disimpan! 💰' };
 }
@@ -376,19 +387,27 @@ function updateDebt(data) {
  * data: { sheet: 'income'|'expense'|'saving', rowIndex, fields: { date, amount, ... } }
  */
 function editTransaction(data) {
+  if (data.sheet === 'saving') initSheets_();
   const sheetName = sheetForKind_(data.sheet);
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
   if (!sh) throw new Error('Sheet tidak ditemukan: ' + sheetName);
 
   const row = parseInt(data.rowIndex, 10);
-  if (!row || row < 2) throw new Error('Index baris tidak valid');
+  if (!row || row < 2 || row > sh.getLastRow()) throw new Error('Index baris tidak valid');
 
   const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
   const f = data.fields || {};
+  if (data.sheet === 'saving' && f.destination !== undefined) {
+    const source = String(f.source || '').trim();
+    const destination = String(f.destination || '').trim();
+    if (!source || !destination || source === destination) {
+      return { success: false, error: 'Dompet asal dan rekening tujuan harus berbeda.' };
+    }
+  }
 
   // Mapping field name → header column index
   const map = {
-    date: 'Date', amount: 'Amount', notes: 'Notes', source: 'Source',
+    date: 'Date', amount: 'Amount', notes: 'Notes', source: 'Source', destination: 'Destination',
     type: 'Type', category: 'Category', subcategory: 'Subcategory'
   };
   Object.keys(f).forEach(k => {
@@ -907,21 +926,28 @@ function uniqueMonthsCount_(rows, dateCol) {
 
 function invalidateCache_() {
   try {
-    CacheService.getScriptCache().removeAll(['dashboardLastKey']);
+    // Cache keys contain this version. A write moves future reads to a new
+    // namespace; old entries expire normally after CACHE_TTL_SECONDS.
+    PropertiesService.getScriptProperties()
+      .setProperty('DASHBOARD_CACHE_VERSION', Utilities.getUuid());
   } catch (e) { /* noop */ }
 }
 
 function getCachedDashboard_(key) {
   try {
     const c = CacheService.getScriptCache();
-    const v = c.get('dash_' + key);
+    const version = PropertiesService.getScriptProperties()
+      .getProperty('DASHBOARD_CACHE_VERSION') || 'initial';
+    const v = c.get('dash_' + version + '_' + key);
     return v ? JSON.parse(v) : null;
   } catch (e) { return null; }
 }
 
 function setCachedDashboard_(key, data) {
   try {
-    CacheService.getScriptCache().put('dash_' + key, JSON.stringify(data), CACHE_TTL_SECONDS);
+    const version = PropertiesService.getScriptProperties()
+      .getProperty('DASHBOARD_CACHE_VERSION') || 'initial';
+    CacheService.getScriptCache().put('dash_' + version + '_' + key, JSON.stringify(data), CACHE_TTL_SECONDS);
   } catch (e) { /* might exceed quota — silent fail */ }
 }
 
@@ -1139,10 +1165,17 @@ function getDashboardData(month, year) {
     const src = r[5] || 'Cash';
     walletBalances[src] = (walletBalances[src] || 0) - amt;
   });
+  let legacySavingsCount = 0;
   allSav.forEach(r => {
+    if (!r[0]) return;
     const amt = parseFloat(r[2]) || 0;
     const src = r[4] || 'BRI';
+    const destination = r[5] ? String(r[5]).trim() : '';
+    if (!destination) legacySavingsCount++;
+    // Legacy rows have no known origin: keep their previous balance calculation
+    // until the owner reconciles them. New rows are internal transfers.
     walletBalances[src] = (walletBalances[src] || 0) - amt;
+    if (destination) walletBalances[destination] = (walletBalances[destination] || 0) + amt;
   });
   // Transfers: keluar dari FromWallet, masuk ke ToWallet (fee dipotong dari From).
   const allTransfers = getSheetData_(SHEET_NAMES.TRANSFER);
@@ -1170,11 +1203,17 @@ function getDashboardData(month, year) {
   // Dana Darurat terlihat lebih sehat dari kenyataan).
   const walletLiquidTotal = Object.values(walletBalances)
     .reduce((s, v) => s + (Number(v) || 0), 0);
-  if (walletLiquidTotal !== 0 || walletConfigs.length > 0) {
+  const investmentWalletTotal = Object.entries(walletBalances)
+    .filter(([name]) => walletMeta[name] && walletMeta[name].type === 'Investasi' || name === 'Investasi')
+    .reduce((s, [, balance]) => s + (Number(balance) || 0), 0);
+  if (walletLiquidTotal !== 0 || walletConfigs.length > 0 || allSav.some(r => !!r[5])) {
     // Replace asset-derived liquidAssets dengan wallet-derived agar tidak ganda.
     // Tetap simpan original untuk debug di asset list.
     const oldLiquid = liquidAssets;
-    liquidAssets = walletLiquidTotal;
+    // A wallet marked Investasi belongs to the investment allocation, not
+    // the spendable emergency fund. It still contributes to total assets.
+    liquidAssets = walletLiquidTotal - investmentWalletTotal;
+    investmentAssets += investmentWalletTotal;
     totalAssets = totalAssets - oldLiquid + walletLiquidTotal;
   }
 
@@ -1428,6 +1467,7 @@ function getDashboardData(month, year) {
       savingsRate
     },
     walletBalances,
+    legacySavingsCount,
     upcomingBills,
     subscriptions,
     manualBills: manualBillsThisMonth,
@@ -1595,7 +1635,8 @@ function listRecentTransactions(month, year, limit) {
       subcategory: '',
       amount: parseFloat(row[2]) || 0,
       notes: row[3] || '',
-      source: row[4] || ''
+      source: row[4] || '',
+      destination: row[5] || ''
     });
   });
 

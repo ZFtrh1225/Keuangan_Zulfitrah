@@ -528,6 +528,12 @@
   function renderAll(d) {
     renderSummary(d.summary);
     renderWallets(d.walletBalances || {});
+    const legacyNotice = $('legacySavingsNotice');
+    if (legacyNotice) {
+      const count = Number(d.legacySavingsCount) || 0;
+      legacyNotice.hidden = count === 0;
+      legacyNotice.textContent = count ? `${count} catatan tabungan lama belum memiliki dompet asal. Saldo historisnya belum dapat direkonsiliasi; buka dan edit catatan tersebut setelah memeriksa asal uangnya.` : '';
+    }
     renderDailyChart(d.daily);
     renderInsights(d.insights);
     renderTop21(d.top21);
@@ -646,6 +652,19 @@
   }
 
   function updateWalletPills(wallets) {
+    // Dompet yang dibuat pengguna juga bisa dipakai sebagai asal/tujuan.
+    ['incomeSourcePills', 'expSourcePills', 'savFromPills', 'savSourcePills'].forEach(id => {
+      const group = $(id);
+      if (!group) return;
+      Object.keys(wallets).forEach(name => {
+        if (Array.from(group.querySelectorAll('.source-pill')).some(p => p.dataset.val === name)) return;
+        const pill = document.createElement('div');
+        pill.className = 'source-pill';
+        pill.dataset.val = name;
+        pill.textContent = walletIcon(name) + ' ' + name;
+        group.appendChild(pill);
+      });
+    });
     document.querySelectorAll('.source-pill').forEach(pill => {
       const src = pill.dataset.val;
       let base = pill.dataset.label;
@@ -1088,7 +1107,8 @@
           (t.category || '').toLowerCase().includes(q) ||
           (t.subcategory || '').toLowerCase().includes(q) ||
           (t.type || '').toLowerCase().includes(q) ||
-          (t.source || '').toLowerCase().includes(q)
+          (t.source || '').toLowerCase().includes(q) ||
+          (t.destination || '').toLowerCase().includes(q)
         );
       });
     }
@@ -1106,7 +1126,9 @@
           <td>${fmtDateShort(t.date)}</td>
           <td><span class="tx-kind ${t.kind}">${t.kind === 'income' ? 'Pemasukan' : t.kind === 'expense' ? 'Pengeluaran' : 'Tabungan'}</span></td>
           <td>${desc}</td>
-          <td>${escapeHtml(t.source || '')}</td>
+          <td>${t.kind === 'saving' && t.destination
+            ? escapeHtml(t.source || '') + ' → ' + escapeHtml(t.destination)
+            : escapeHtml(t.source || '') + (t.kind === 'saving' ? ' (lama)' : '')}</td>
           <td class="ta-right"><span class="tx-amt ${t.kind}">${sign} ${fmtRp(t.amount)}</span></td>
           <td class="ta-right"><button class="icon-btn" aria-label="Edit">✏️</button></td>
         </tr>
@@ -1166,10 +1188,15 @@
           <input type="text" class="form-input" id="edNotes" value="${escapeHtml(tx.notes || '')}" />
         </div>
         <div class="form-group">
-          <label class="form-label" for="edSource">Sumber</label>
-          <input type="text" class="form-input" id="edSource" value="${escapeHtml(tx.source || '')}" />
+          <label class="form-label" for="edSource">${kind === 'saving' ? 'Dompet asal' : 'Sumber'}</label>
+          <input type="text" class="form-input" id="edSource" value="${escapeHtml(kind === 'saving' && !tx.destination ? '' : (tx.source || ''))}" />
         </div>
       </div>
+      ${kind === 'saving' ? `<div class="form-group mb-14">
+        <label class="form-label" for="edDestination">Rekening tujuan</label>
+        <input type="text" class="form-input" id="edDestination" value="${escapeHtml(tx.destination || tx.source || '')}" />
+        ${!tx.destination ? '<div class="muted micro-label">Catatan lama: masukkan dompet asal yang sebenarnya untuk merekonsiliasi saldo.</div>' : ''}
+      </div>` : ''}
     `;
     setupCurrencyMasks();
     openModal('editTxModalOverlay');
@@ -1189,6 +1216,13 @@
       fields.subcategory = $('edSubcat').value;
     } else {
       fields.type = $('edType').value;
+    }
+    if (kind === 'saving') {
+      fields.source = fields.source.trim();
+      fields.destination = $('edDestination').value.trim();
+      if (!fields.source || !fields.destination || fields.source === fields.destination) {
+        return showToast('Dompet asal dan rekening tujuan harus berbeda.', 'error');
+      }
     }
     // Sama seperti form tambah transaksi: tanpa cek ini, tanggal kosong atau
     // nominal 0 bisa lolos tersimpan dan diam-diam merusak catatan keuangan.
@@ -1550,9 +1584,11 @@
       date: $('savDate').value,
       amount: parseRp($('savAmount').value),
       notes: $('savNotes').value,
-      source: getActivePill('savSourcePills') || 'BRI'
+      source: getActivePill('savFromPills') || 'Cash',
+      destination: getActivePill('savSourcePills') || 'BRI'
     };
     if (!data.date || data.amount <= 0) return showToast('Lengkapi tanggal & jumlah!', 'error');
+    if (data.source === data.destination) return showToast('Dompet asal dan rekening tujuan harus berbeda.', 'error');
     const bal = state.wallets[data.source] || 0;
     if (data.amount > bal) {
       const ok = await MT.dialog.confirm(
