@@ -487,6 +487,70 @@
         </div>
       </div>
     </section>
+<!-- ═══════════════ Simulasi Skenario Keuangan ═══════════════ -->
+    <section class="fadeUp" aria-labelledby="scenarioTitle">
+      <div class="section-title">
+        <span id="scenarioTitle">🧭 Simulasi Skenario Keuangan</span>
+        <button class="btn-pill" id="btnResetScenario">Atur Ulang</button>
+      </div>
+      <div class="card scenario-card">
+        <p class="muted micro-label">Ubah asumsi untuk membandingkan kondisi dasar dan skenario. Perhitungan hanya di layar: tidak membuat transaksi atau mengubah saldo.</p>
+        <div id="scenarioStatus" class="muted micro-label" role="status"></div>
+        <div class="scenario-fields">
+          <div class="form-group">
+            <label class="form-label" for="scBaseIncome">Pemasukan dasar per bulan (Rp)</label>
+            <input class="form-input currency-mask" id="scBaseIncome" type="text" inputmode="numeric" placeholder="0" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="scBaseExpense">Pengeluaran dasar per bulan (Rp)</label>
+            <input class="form-input currency-mask" id="scBaseExpense" type="text" inputmode="numeric" placeholder="0" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="scIncomeDirection">Perubahan pemasukan</label>
+            <select class="form-input" id="scIncomeDirection">
+              <option value="increase">Naik per bulan</option>
+              <option value="decrease">Turun per bulan</option>
+            </select>
+            <input class="form-input currency-mask" id="scIncomeChange" type="text" inputmode="numeric" aria-label="Nominal perubahan pemasukan per bulan dalam rupiah" placeholder="0" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="scExpenseDirection">Perubahan pengeluaran</label>
+            <select class="form-input" id="scExpenseDirection">
+              <option value="decrease">Turun per bulan</option>
+              <option value="increase">Naik per bulan</option>
+            </select>
+            <input class="form-input currency-mask" id="scExpenseChange" type="text" inputmode="numeric" aria-label="Nominal perubahan pengeluaran per bulan dalam rupiah" placeholder="0" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="scOneTimeExpense">Pengeluaran sekali (Rp)</label>
+            <input class="form-input currency-mask" id="scOneTimeExpense" type="text" inputmode="numeric" placeholder="0, terjadi bulan pertama" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="scHorizon">Jangka waktu</label>
+            <select class="form-input" id="scHorizon">
+              <option value="6">6 bulan</option>
+              <option value="12" selected>12 bulan</option>
+              <option value="24">24 bulan</option>
+              <option value="36">36 bulan</option>
+              <option value="60">60 bulan</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="scGoal">Tujuan keuangan (opsional)</label>
+            <select class="form-input" id="scGoal"><option value="">Tanpa tujuan</option></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="scGoalMonthly">Rencana setoran tujuan per bulan (Rp)</label>
+            <input class="form-input currency-mask" id="scGoalMonthly" type="text" inputmode="numeric" placeholder="0" />
+          </div>
+        </div>
+        <div class="scenario-results" id="scenarioResults" aria-live="polite"></div>
+        <div class="scenario-chart-wrap">
+          <canvas id="scenarioChart" aria-label="Perbandingan kekayaan bersih dasar dan skenario"></canvas>
+        </div>
+        <p class="muted micro-label">Asumsi: pemasukan dan pengeluaran bulanan tetap; tanpa inflasi, hasil investasi, perubahan nilai aset, atau pembayaran utang di luar pengeluaran yang dimasukkan. Setoran tujuan adalah perpindahan antardompet, bukan tambahan kekayaan.</p>
+      </div>
+    </section>
 <!-- ═══════════════ Subscriptions Radar ═══════════════ -->
     <section class="fadeUp">
       <div class="section-title">🔁 Radar Langganan & Tagihan</div>
@@ -1625,6 +1689,7 @@
   <script src="js/api.js" defer></script>
   <script src="js/dialog.js" defer></script>
   <script src="js/charts.js" defer></script>
+  <script src="js/scenarios.js" defer></script>
   <script src="js/inflation-calculator.js" defer></script>
   <script src="js/debt-optimizer.js" defer></script>
   <script src="js/lifestyle-creep-detector.js" defer></script>

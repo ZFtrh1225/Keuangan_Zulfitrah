@@ -747,6 +747,39 @@ html[data-theme="light"] .summary-card {
 .fc-stat-lbl { font-size: 10px; color: var(--t4); text-transform: uppercase; letter-spacing: .08em; }
 .fc-stat-val { font-family: var(--font-mono); font-size: 14px; font-weight: 700; margin-top: 4px; }
 
+.scenario-card { display: grid; gap: 16px; }
+.scenario-card p { margin: 0; line-height: 1.5; }
+.scenario-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.scenario-fields .form-group { min-width: 0; }
+.scenario-results { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.scenario-result {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--card2);
+}
+.scenario-result-label { font-size: 11px; color: var(--t3); margin-bottom: 5px; }
+.scenario-result-value { font-family: var(--font-mono); font-size: 15px; font-weight: 700; color: var(--t1); overflow-wrap: anywhere; }
+.scenario-result-value.positive { color: var(--green); }
+.scenario-result-value.negative { color: var(--red); }
+.scenario-note {
+  grid-column: 1 / -1;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--t3);
+  line-height: 1.5;
+  font-size: 12px;
+}
+.scenario-note.warn { color: var(--amber); border-color: var(--amber); }
+.scenario-chart-wrap { position: relative; width: 100%; height: 290px; }
+.scenario-chart-wrap > canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; }
+
 .runway-card { display: flex; flex-direction: column; gap: 6px; }
 .runway-num {
   font-family: var(--font-mono);
@@ -1279,6 +1312,9 @@ select.form-input {
   .hide-sm { display: none; }
   /* Forecast chart sedikit lebih ringkas di mobile */
   .forecast-chart-wrap { height: 240px; }
+  .scenario-fields { grid-template-columns: 1fr; }
+  .scenario-results { grid-template-columns: 1fr; }
+  .scenario-chart-wrap { height: 240px; }
 }
 
 @media (max-width: 700px) {
