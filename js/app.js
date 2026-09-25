@@ -325,7 +325,12 @@
 
     // Header buttons
     $('btnAdd').addEventListener('click', () => { openModal('modalOverlay'); switchTxTab('income'); });
-    $('btnWealth').addEventListener('click', () => openModal('wealthModalOverlay'));
+    $('btnWealth').addEventListener('click', () => {
+      $('debtEditRowIndex').value = '';
+      $('debtEditId').value = '';
+      $('btnSubmitDebt').textContent = 'Simpan Kewajiban 📝';
+      openModal('wealthModalOverlay');
+    });
     $('btnSettings').addEventListener('click', openSettings);
     $('btnPdf').addEventListener('click', downloadPDF);
     $('btnGemini').addEventListener('click', askGemini);
@@ -344,6 +349,7 @@
     // Goals
     $('btnAddGoal').addEventListener('click', () => openGoalModal(null));
     $('btnAddGoalEmpty').addEventListener('click', () => openGoalModal(null));
+    $('btnScenarioGoalCreate').addEventListener('click', () => openGoalModal(null));
 
     // Templates
     $('btnSaveTemplate').addEventListener('click', saveCurrentAsTemplate);
@@ -416,6 +422,19 @@
     sub.innerHTML = '';
     sub.add(new Option('— Pilih Subkategori —', ''));
     getSubcatsFor(cat).forEach(s => sub.add(new Option(s, s)));
+    $('expDebtLinkWrap').hidden = cat !== 'Kewajiban & Utang';
+    if (cat === 'Kewajiban & Utang') populateDebtOptions($('expDebtId'));
+    else { $('expDebtId').value = ''; $('expPrincipalPaid').value = ''; }
+  }
+
+  function populateDebtOptions(select, current) {
+    const selected = current !== undefined ? current : select.value;
+    select.replaceChildren(new Option('Tidak ditautkan', ''));
+    const debts = state.dashboard && state.dashboard.netWorth && state.dashboard.netWorth.debtDetails || [];
+    debts.forEach(debt => {
+      if (debt.id) select.add(new Option(debt.name + ' · sisa ' + fmtRp(debt.value), debt.id));
+    });
+    if (Array.from(select.options).some(o => o.value === selected)) select.value = selected;
   }
 
   // ────────────────────────────────────────────────────────────────
@@ -541,6 +560,8 @@
       renderGoalOptions();
       renderScenarioGoalOptions();
       prioritiesGoalsFresh = true;
+    } else {
+      $('scGoalHint').textContent = 'Daftar tujuan gagal dimuat. Periksa koneksi atau muat ulang aplikasi.';
     }
     prioritiesGoalsReady = true;
     renderActionPriorities();
@@ -566,6 +587,11 @@
       if (g.id) select.add(new Option(g.name || 'Tujuan', g.id));
     });
     if (Array.from(select.options).some(o => o.value === current)) select.value = current;
+    $('scGoalHint').textContent = select.options.length > 1
+      ? 'Pilih tujuan yang sudah dibuat, atau biarkan Tanpa tujuan.'
+      : (state.goals || []).length
+        ? 'Tujuan belum memiliki ID. Terbitkan Code.gs terbaru agar dapat dipilih.'
+        : 'Belum ada tujuan tersimpan. Klik + Buat Tujuan agar tersedia pilihan lain.';
     if (state.dashboard) renderScenarioPlanner(state.dashboard);
   }
 
@@ -1016,6 +1042,7 @@
 
     renderWealthList('asset', nw.assetDetails, 'assetTableList');
     renderWealthList('debt', nw.debtDetails, 'debtTableList');
+    if ($('expCat').value === 'Kewajiban & Utang') populateDebtOptions($('expDebtId'));
 
     // Allocation
     const allocTotal = charts.renderAllocation('allocChart', nw.assetAllocation || []);
@@ -1056,16 +1083,22 @@
         <div>
           <div class="wealth-row-name">${escapeHtml(item.name)}</div>
           <div class="wealth-row-inst">${escapeHtml(item.inst)} · ${escapeHtml(item.type)}</div>
+          ${type === 'debt' && item.principalPaid ? `<div class="muted micro-label">Saldo awal ${fmtRp(item.openingValue)} − pokok dibayar ${fmtRp(item.principalPaid)}</div>` : ''}
         </div>
         <div style="text-align:right;">
           <div class="wealth-row-val">${fmtRp(item.value)}</div>
           <div class="wealth-row-actions">
+            ${type === 'debt' ? `<button type="button" class="btn-pill" data-wealth-edit="${escapeHtml(item.id || '')}">Edit</button>` : ''}
             <button class="icon-btn" data-wealth-del="${type}|${item.rowIndex}" aria-label="Hapus">🗑️</button>
           </div>
         </div>
       </div>
     `).join('');
     // attach handlers
+    c.querySelectorAll('[data-wealth-edit]').forEach(btn => btn.addEventListener('click', () => {
+      const item = list.find(d => d.id === btn.dataset.wealthEdit);
+      if (item) openDebtEditor(item);
+    }));
     c.querySelectorAll('[data-wealth-del]').forEach(btn => {
       btn.addEventListener('click', async () => {
         const [t, ri] = btn.dataset.wealthDel.split('|');
@@ -1077,7 +1110,8 @@
         });
         if (!ok) return;
         showToast('Menghapus…', 'info');
-        const res = await api.deleteWealthItem(t, parseInt(ri, 10));
+        const item = t === 'debt' ? list.find(d => d.rowIndex === parseInt(ri, 10)) : null;
+        const res = await api.deleteWealthItem(t, parseInt(ri, 10), item && item.id);
         if (res.success) {
           showToast(res.msg || 'Terhapus', 'success');
           store.invalidateAllCache();
@@ -1366,7 +1400,7 @@
     }
     tb.innerHTML = filtered.map(t => {
       const desc = t.kind === 'expense'
-        ? escapeHtml(t.subcategory || t.category) + (t.notes ? ' <span class="muted">· ' + escapeHtml(t.notes) + '</span>' : '')
+        ? escapeHtml(t.subcategory || t.category) + (t.debtId ? ' <span class="muted">· pokok ' + fmtRp(t.principalPaid) + '</span>' : '') + (t.notes ? ' <span class="muted">· ' + escapeHtml(t.notes) + '</span>' : '')
         : escapeHtml(t.type || '') + (t.notes ? ' <span class="muted">· ' + escapeHtml(t.notes) + '</span>' : '');
       const sign = t.kind === 'income' ? '+' : t.kind === 'expense' ? '-' : '→';
       return `
@@ -1396,10 +1430,12 @@
     $('editKind').value = kind;
     $('editRowIndex').value = rowIndex;
     $('editBillId').value = tx.billId || '';
+    $('editDebtId').value = tx.debtId || '';
     $('editTxModalTitle').textContent = '✏️ Edit ' + (kind === 'income' ? 'Pemasukan' : kind === 'expense' ? 'Pengeluaran' : 'Tabungan');
     const wrap = $('editFields');
     wrap.innerHTML = `
       ${tx.billId ? '<p class="muted micro-label">Pembayaran tagihan tertaut. Menghapus pengeluaran ini akan membuka kembali tagihannya.</p>' : ''}
+      ${tx.debtId ? '<p class="muted micro-label">Pembayaran pokok tertaut. Mengubah atau menghapus transaksi ini menghitung ulang sisa kewajiban.</p>' : ''}
       <div class="form-row">
         <div class="form-group">
           <label class="form-label" for="edDate">Tanggal</label>
@@ -1424,6 +1460,14 @@
             <input type="text" class="form-input" id="edSubcat" value="${escapeHtml(tx.subcategory || '')}" />
           </div>
         </div>
+        ${tx.category === 'Kewajiban & Utang' || tx.debtId ? `<div class="form-row mb-14">
+          <div class="form-group"><label class="form-label" for="edDebtId">Kewajiban terkait (opsional)</label>
+            <select class="form-input" id="edDebtId"></select></div>
+          <div class="form-group"><label class="form-label" for="edPrincipalPaid">Bagian yang mengurangi pokok (Rp)</label>
+            <div class="amount-input-wrap"><span class="amount-prefix">Rp</span>
+              <input type="text" inputmode="numeric" class="form-input currency-mask" id="edPrincipalPaid" value="${tx.principalPaid ? Number(tx.principalPaid).toLocaleString('id-ID') : ''}" /></div></div>
+          <div class="muted micro-label">Pilih kewajiban, lalu isi pokok pembayaran sebenarnya. Bunga/biaya tidak mengurangi pokok.</div>
+        </div>` : ''}
       ` : `
         <div class="form-row single mb-14">
           <div class="form-group">
@@ -1453,6 +1497,7 @@
         </select>
       </div>` : ''}
     `;
+    if ($('edDebtId')) populateDebtOptions($('edDebtId'), tx.debtId || '');
     setupCurrencyMasks();
     openModal('editTxModalOverlay');
   }
@@ -1469,6 +1514,10 @@
     if (kind === 'expense') {
       fields.category = $('edCat').value;
       fields.subcategory = $('edSubcat').value;
+      if ($('edDebtId')) {
+        fields.debtId = $('edDebtId').value;
+        fields.principalPaid = fields.debtId ? parseRp($('edPrincipalPaid').value) : 0;
+      }
     } else {
       fields.type = $('edType').value;
     }
@@ -1486,7 +1535,7 @@
       return showToast('Tanggal & jumlah wajib diisi dengan nominal > 0!', 'error');
     }
     await submitWithGuard(async () => {
-      const res = await api.editTransaction(kind, rowIndex, fields, $('editBillId').value);
+      const res = await api.editTransaction(kind, rowIndex, fields, $('editBillId').value, $('editDebtId').value);
       if (res.success) {
         showToast(res.msg || 'Tersimpan', 'success');
         closeModal('editTxModalOverlay');
@@ -1503,7 +1552,8 @@
   async function confirmDeleteEditedTx() {
     const ok = await MT.dialog.confirm($('editBillId').value
       ? 'Hapus transaksi pembayaran ini? Tagihan tertaut akan kembali belum lunas.'
-      : 'Hapus transaksi ini secara permanen?', {
+      : $('editDebtId').value ? 'Hapus transaksi ini? Sisa kewajiban tertaut akan dihitung ulang.'
+        : 'Hapus transaksi ini secara permanen?', {
       title: 'Konfirmasi Hapus',
       danger: true,
       okLabel: 'Hapus',
@@ -1513,7 +1563,7 @@
     const kind = $('editKind').value;
     const rowIndex = parseInt($('editRowIndex').value, 10);
     await submitWithGuard(async () => {
-      const res = await api.deleteTransaction(kind, rowIndex, $('editBillId').value);
+      const res = await api.deleteTransaction(kind, rowIndex, $('editBillId').value, $('editDebtId').value);
       if (res.success) {
         showToast(res.msg || 'Terhapus', 'success');
         closeModal('editTxModalOverlay');
@@ -1849,6 +1899,10 @@
       notes: $('expNotes').value,
       source: getActivePill('expSourcePills') || 'Cash'
     };
+    if (cat === 'Kewajiban & Utang') {
+      data.debtId = $('expDebtId').value;
+      data.principalPaid = data.debtId ? parseRp($('expPrincipalPaid').value) : 0;
+    }
     if (!cat || !data.date || data.amount <= 0) return showToast('Lengkapi kategori, tanggal & jumlah!', 'error');
     const bal = state.wallets[data.source] || 0;
     if (data.amount > bal) {
@@ -1922,17 +1976,44 @@
     }, 'btnSubmitAsset');
   }
 
+  function openDebtEditor(debt) {
+    $('debtEditRowIndex').value = debt.rowIndex;
+    $('debtEditId').value = debt.id;
+    if (!Array.from($('debtType').options).some(o => o.value === debt.type))
+      $('debtType').add(new Option(debt.type, debt.type));
+    $('debtType').value = debt.type;
+    $('debtName').value = debt.name;
+    $('debtValue').value = Number(debt.openingValue).toLocaleString('id-ID');
+    $('debtInst').value = debt.inst === '-' ? '' : debt.inst;
+    $('debtMinPayment').value = debt.minPayment ? Number(debt.minPayment).toLocaleString('id-ID') : '';
+    $('debtInterestRate').value = debt.interestRate || 0;
+    $('btnSubmitDebt').textContent = 'Simpan Perubahan Kewajiban';
+    document.querySelector('[data-wealth-tab="debt"]').click();
+    openModal('wealthModalOverlay');
+  }
+
   async function submitDebt() {
     const data = {
       type: $('debtType').value,
       name: $('debtName').value.trim(),
       value: parseRp($('debtValue').value),
-      inst: $('debtInst').value.trim()
+      inst: $('debtInst').value.trim(),
+      minPayment: parseRp($('debtMinPayment').value),
+      interestRate: Number($('debtInterestRate').value || 0)
     };
-    if (!data.name || data.value <= 0) return showToast('Lengkapi nama & nilai hutang!', 'error');
+    if (!data.name || data.value <= 0 || data.minPayment < 0 || !Number.isFinite(data.interestRate) || data.interestRate < 0)
+      return showToast('Isi nama, saldo awal, cicilan, dan bunga yang valid.', 'error');
     await submitWithGuard(async () => {
-      const res = await api.addDebt(data);
+      const editing = $('debtEditRowIndex').value;
+      const res = editing
+        ? await api.updateDebt({ ...data, rowIndex: Number(editing), id: $('debtEditId').value })
+        : await api.addDebt(data);
       handleSubmitResult(res, 'wealthModalOverlay');
+      if (res.success) {
+        $('debtEditRowIndex').value = '';
+        $('debtEditId').value = '';
+        $('btnSubmitDebt').textContent = 'Simpan Kewajiban 📝';
+      }
     }, 'btnSubmitDebt');
   }
 
@@ -1951,11 +2032,12 @@
   }
 
   function clearForms() {
-    ['incomeAmount', 'incomeNotes', 'expAmount', 'expNotes', 'savAmount', 'savNotes',
-     'assetName', 'assetValue', 'assetInst', 'debtName', 'debtValue', 'debtInst'].forEach(id => {
+    ['incomeAmount', 'incomeNotes', 'expAmount', 'expNotes', 'expPrincipalPaid', 'savAmount', 'savNotes',
+     'assetName', 'assetValue', 'assetInst', 'debtName', 'debtValue', 'debtInst', 'debtMinPayment', 'debtInterestRate'].forEach(id => {
       const el = $(id); if (el) el.value = '';
     });
     if ($('savGoalSelect')) $('savGoalSelect').value = '';
+    if ($('expDebtId')) $('expDebtId').value = '';
     setDefaultDates();
   }
 

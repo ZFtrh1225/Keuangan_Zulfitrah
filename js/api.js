@@ -141,8 +141,8 @@
   const addTransfer = (data) => call('addTransfer', data);
 
   // ── Update ──
-  const editTransaction = (sheet, rowIndex, fields, billId) =>
-    call('editTransaction', { sheet, rowIndex, fields, billId });
+  const editTransaction = (sheet, rowIndex, fields, billId, expectedDebtId) =>
+    call('editTransaction', { sheet, rowIndex, fields, billId, expectedDebtId });
   const updateGoal = (data) => call('updateGoal', data);
   const updateDebt = (data) => call('updateDebt', data);
   const updateWallet = (data) => call('updateWallet', data);
@@ -150,8 +150,8 @@
   const saveAppSecret = (newSecret) => call('saveAppSecret', { secret: newSecret });
 
   // ── Delete ──
-  const deleteTransaction = (sheet, rowIndex, billId) => call('deleteTransaction', { sheet, rowIndex, billId });
-  const deleteWealthItem = (type, rowIndex) => call('deleteWealthItem', { type, rowIndex });
+  const deleteTransaction = (sheet, rowIndex, billId, debtId) => call('deleteTransaction', { sheet, rowIndex, billId, debtId });
+  const deleteWealthItem = (type, rowIndex, id) => call('deleteWealthItem', { type, rowIndex, id });
   const deleteGoal = (rowIndex) => call('deleteGoal', { rowIndex });
   const deleteTemplate = (rowIndex) => call('deleteTemplate', { rowIndex });
   const deleteBill = (rowIndexOrId) => call('deleteBill', typeof rowIndexOrId === 'string'

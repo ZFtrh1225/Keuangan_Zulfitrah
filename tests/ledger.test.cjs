@@ -417,6 +417,69 @@ test('linked expense actions reject a stale row after a deletion', () => {
   assert.equal(app.getDashboardData(9, 2026).summary.totalExp, 2000);
 });
 
+test('an existing Paylater expense can allocate principal without recording a second expense', () => {
+  const { context: app, sheets } = backend('2026-09-28T12:00:00+07:00');
+  app.addWallet({ name: 'Cash', opening: 3000000, openingDate: '2026-09-01', type: 'Tunai' });
+  app.addDebt({ type: 'Kartu Kredit/Paylater', name: 'Paylater', value: 2113576,
+    minPayment: 220000, interestRate: 0 });
+  const debt = app.getDashboardData(9, 2026).netWorth.debtDetails[0];
+  app.addExpense({ date: '2026-09-26', category: 'Kewajiban & Utang',
+    subcategory: 'Cicilan Paylater/Pinjol', amount: 220000, source: 'Cash' });
+  const before = app.getDashboardData(9, 2026);
+  assert.equal(before.netWorth.totalDebts, 2113576);
+  const tx = app.listRecentTransactions(9, 2026, 10).transactions[0];
+  const linked = app.editTransaction({ sheet: 'expense', rowIndex: tx.rowIndex,
+    fields: { debtId: debt.id, principalPaid: 200000 } });
+  assert.equal(linked.success, true);
+  assert.equal(sheets.get('Expenses').rows.length, 2);
+  const after = app.getDashboardData(9, 2026);
+  assert.equal(after.netWorth.totalDebts, 1913576);
+  assert.equal(after.walletBalances.Cash, 2780000);
+  assert.equal(after.summary.totalExp, 220000);
+  assert.equal(after.netWorth.netWorth, before.netWorth.netWorth + 200000);
+  assert.equal(after.netWorth.debtDetails[0].principalPaid, 200000);
+  assert.equal(app.calculateDebtPayoff({ extraPayment: 0 }).totalDebt, 1913576);
+  assert.equal(app.deleteWealthItem('debt', debt.rowIndex).success, false);
+  assert.equal(app.updateDebt({ id: debt.id, rowIndex: debt.rowIndex, value: 150000 }).success, false);
+  assert.equal(app.editTransaction({ sheet: 'expense', rowIndex: tx.rowIndex,
+    expectedDebtId: debt.id, fields: { debtId: debt.id, principalPaid: 220000 } }).success, true);
+  assert.equal(app.getDashboardData(9, 2026).netWorth.totalDebts, 1893576);
+  assert.equal(app.deleteTransaction('expense', tx.rowIndex, '', debt.id).success, true);
+  assert.equal(app.getDashboardData(9, 2026).netWorth.totalDebts, 2113576);
+  assert.equal(app.deleteWealthItem('debt', debt.rowIndex).success, true);
+});
+
+test('debt payment validation rejects unknown debts, overpayment and stale linked rows', () => {
+  const { context: app } = backend('2026-09-28T12:00:00+07:00');
+  app.addDebt({ type: 'Pinjaman Pribadi', name: 'A', value: 100000 });
+  const id = app.getDashboardData(9, 2026).netWorth.debtDetails[0].id;
+  const data = { date: '2026-09-28', category: 'Kewajiban & Utang', amount: 20000,
+    source: 'Cash', debtId: id, principalPaid: 20000 };
+  assert.equal(app.addExpense({ ...data, debtId: 'missing' }).success, false);
+  assert.equal(app.addExpense({ ...data, principalPaid: 21000 }).success, false);
+  assert.equal(app.addExpense({ ...data }).success, true);
+  assert.equal(app.editTransaction({ sheet: 'expense', rowIndex: 2,
+    fields: { amount: 10000 } }).success, false);
+  assert.equal(app.addExpense({ ...data, amount: 90000, principalPaid: 90000 }).success, false);
+  app.addExpense({ date: '2026-09-28', category: 'Lain-lain', amount: 1000, source: 'Cash' });
+  assert.equal(app.deleteTransaction('expense', 2, '', id).success, true);
+  assert.equal(app.deleteTransaction('expense', 2, '', id).success, false);
+  assert.equal(app.getDashboardData(9, 2026).netWorth.totalDebts, 100000);
+});
+
+test('legacy debts get IDs after custom columns without changing their balances', () => {
+  const { context: app, sheets } = backend('2026-09-28T12:00:00+07:00');
+  app.initSheets_();
+  const debts = sheets.get('Debts');
+  debts.rows[0].splice(7, 0, 'Custom');
+  debts.appendRow(['2026-09-01', 'Lainnya', 'Lama', 150000, '', 0, 0, 'tetap', '']);
+  const initial = app.getDashboardData(9, 2026).netWorth.debtDetails[0];
+  assert.ok(initial.id);
+  assert.equal(initial.value, 150000);
+  assert.equal(debts.rows[1][7], 'tetap');
+  assert.equal(app.getDashboardData(9, 2026).netWorth.debtDetails[0].id, initial.id);
+});
+
 test('bill input validation prevents invented dates and unknown wallets', () => {
   const { context: app } = backend('2026-12-29T12:00:00+07:00');
   assert.equal(app.addBill({ name: 'A', dueDate: '2026-02-31', amount: 10 }).success, false);
