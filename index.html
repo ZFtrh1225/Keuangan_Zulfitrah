@@ -1202,6 +1202,42 @@
     </div>
   </div>
 
+  <!-- ═══════════════ MODAL: Bill Payment ═══════════════ -->
+  <div class="modal-overlay" id="billPaymentOverlay">
+    <div class="modal modal-narrow" role="dialog" aria-modal="true" aria-labelledby="billPaymentTitle">
+      <div class="modal-header"><div class="modal-top">
+        <div class="modal-heading" id="billPaymentTitle">💸 Bayar &amp; Catat Tagihan</div>
+        <button class="modal-close" data-close="billPaymentOverlay" aria-label="Tutup">×</button>
+      </div></div>
+      <div class="modal-body">
+        <p class="muted micro-label" id="billPaymentSummary"></p>
+        <div class="form-row mb-14">
+          <div class="form-group"><label class="form-label" for="billPaymentDate">Tanggal pembayaran *</label>
+            <input type="date" class="form-input" id="billPaymentDate" /></div>
+          <div class="form-group"><label class="form-label" for="billPaymentAmount">Nominal dibayar (Rp) *</label>
+            <div class="amount-input-wrap"><span class="amount-prefix">Rp</span>
+              <input type="text" inputmode="numeric" class="form-input currency-mask" id="billPaymentAmount" /></div></div>
+        </div>
+        <div class="form-row mb-14">
+          <div class="form-group"><label class="form-label" for="billPaymentCategory">Kategori *</label>
+            <select class="form-input" id="billPaymentCategory"></select></div>
+          <div class="form-group"><label class="form-label" for="billPaymentSubcategory">Subkategori</label>
+            <select class="form-input" id="billPaymentSubcategory"></select></div>
+        </div>
+        <div class="form-row single mb-14"><div class="form-group">
+          <label class="form-label" for="billPaymentWallet">Dompet pembayaran *</label>
+          <select class="form-input" id="billPaymentWallet"></select>
+        </div></div>
+        <div class="form-row single mb-14"><div class="form-group">
+          <label class="form-label" for="billPaymentNotes">Catatan</label>
+          <input type="text" class="form-input" id="billPaymentNotes" placeholder="Opsional…" />
+        </div></div>
+        <p class="muted micro-label">Menyimpan akan menandai tagihan lunas dan menambah satu pengeluaran. Periksa transaksi sebelumnya jika sudah pernah membayar.</p>
+        <button class="btn-submit" id="btnRecordBillPayment">Bayar &amp; Catat</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ═══════════════ MODAL: Edit Transaction ═══════════════ -->
   <div class="modal-overlay" id="editTxModalOverlay">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="editTxModalTitle">
@@ -1214,6 +1250,7 @@
       <div class="modal-body">
         <input type="hidden" id="editKind" />
         <input type="hidden" id="editRowIndex" />
+        <input type="hidden" id="editBillId" />
         <div id="editFields"></div>
         <div class="modal-actions">
           <button class="btn btn-danger" id="btnDeleteTx">🗑️ Hapus</button>

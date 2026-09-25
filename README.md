@@ -196,3 +196,27 @@ Jika tanggal dan nama prediksi langganan cocok dengan tagihan manual, aplikasi
 memakai tagihan manual agar jumlahnya tidak terhitung dua kali. Dashboard
 menampilkan hingga tiga tindakan paling mendesak, termasuk beberapa tagihan
 jika memang itu yang paling mendesak.
+
+## 💸 Bayar & Catat Tagihan
+
+Salin `Code.gs` terbaru ke Apps Script dan terbitkan **New version** pada
+deployment aplikasi **sebelum** menggabungkan pembaruan frontend. Migrasi
+menambah kolom `BillId` di akhir sheet `Expenses`; transaksi lama tetap ada.
+URL deployment yang aktif di `js/api.js` harus tetap menunjuk ke deployment
+yang baru diperbarui.
+
+Untuk tagihan manual yang belum lunas, pilih **Bayar & Catat** di prioritas
+dashboard atau detail kalender. Isi tanggal pembayaran sebenarnya, nominal,
+kategori, dan dompet, lalu konfirmasi. Aplikasi menambah satu pengeluaran
+yang tertaut dengan tagihan dan menandainya lunas; saldo serta anggaran ikut
+menghitung pengeluaran tersebut. Jika respons koneksi hilang, periksa dulu
+riwayat transaksi. Mengirim pembayaran tagihan yang sama lagi tidak membuat
+transaksi kedua. Jika Anda sebelumnya sudah menandai tagihan lunas atau
+mencatat pengeluaran secara manual, cocokkan riwayat terlebih dahulu untuk
+menghindari pencatatan ganda sebelum menggunakan fitur ini.
+
+Transaksi yang tertaut bisa diedit lewat riwayat. Menghapusnya membuka kembali
+tagihan dan mengembalikan pengaruh transaksi pada saldo dan laporan. Tagihan
+yang memiliki pembayaran tertaut tidak dapat dibatalkan status lunasnya atau
+dihapus sebelum transaksi pembayaran dihapus. Tombol **Tandai lunas** tetap
+tersedia untuk mencatat status saja tanpa membuat transaksi.
