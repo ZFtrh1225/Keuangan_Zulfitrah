@@ -248,3 +248,16 @@ Saat menambah atau mengedit kewajiban, isi **cicilan minimum bulanan** dan
 Kalkulator ini hanya memproyeksikan jadwal, tidak membuat transaksi pembayaran.
 FIRE Projection juga hanya simulasi berdasarkan asumsi pengeluaran, kontribusi,
 modal, hasil investasi, inflasi, dan tingkat penarikan; tidak mencatat investasi.
+
+Jika Anda memilih kewajiban pada form pengeluaran, isi **bagian yang mengurangi
+pokok** dengan jumlah penurunan saldo sesuai rincian cicilan. Sebagai contoh,
+pengeluaran Rp100.000 dengan pokok Rp100.000 akan menurunkan saldo awal
+Rp2.113.576 menjadi Rp2.013.576; jika sebagian berupa biaya/bunga, angka
+pokok lebih kecil. Tanpa memilih kewajiban, transaksi tetap bisa disimpan
+sebagai pengeluaran biasa dan tidak mengubah daftar utang.
+
+Kartu **Total Hutang** dan **Daftar Kewajiban** berasal dari satu dashboard.
+Tombol **Segarkan angka** meminta data terbaru langsung dari backend ketika
+tampilan masih terlihat lama. Titik hijau kecil pada grafik Kekayaan Bersih
+menunjukkan satu snapshot riwayat; garis baru terbentuk ketika tersedia
+catatan pada bulan lain.

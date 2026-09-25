@@ -156,7 +156,7 @@ function handleAction_(e) {
   try {
     switch (action) {
       // ── Read ──
-      case 'getDashboardData':       return getDashboardData(data.month, data.year);
+      case 'getDashboardData':       return getDashboardData(data.month, data.year, { fresh: data.fresh === true });
       case 'listRecentTransactions': return listRecentTransactions(data.month, data.year, data.limit);
       case 'listGoals':              return listGoals();
       case 'getSettings':            return getSettings();
@@ -414,7 +414,7 @@ function validateDebtPayment_(debtId, principalPaid, expenseAmount, category, ex
   if (category !== 'Kewajiban & Utang' || !Number.isFinite(amount) || amount <= 0 ||
       !Number.isFinite(principal) || principal <= 0 || principal > amount ||
       !Number.isSafeInteger(principal))
-    return { error: 'Pokok pembayaran harus lebih dari 0 dan tidak melebihi jumlah pengeluaran.' };
+    return { error: 'Jika memilih kewajiban, isi nominal yang mengurangi saldo utang (lebih dari Rp0 dan maksimal sebesar pengeluaran). Jika hanya mencatat bunga/biaya, pilih Tidak ditautkan.' };
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.DEBT);
   const debt = getSheetData_(SHEET_NAMES.DEBT)
     .find(r => String(r[colIndex_(sh, 'Id')]) === id);

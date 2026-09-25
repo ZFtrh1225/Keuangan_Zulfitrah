@@ -380,6 +380,7 @@
         <div class="summary-card expense">
           <div class="sc-label">📝 Total Hutang Saat Ini</div>
           <div class="sc-value expense" id="nwDebts">Rp 0</div>
+          <button type="button" class="btn-pill" id="btnRefreshNetWorth">↻ Segarkan angka</button>
         </div>
         <div class="summary-card income">
           <div class="sc-label">💰 Kekayaan Bersih Saat Ini</div>
@@ -792,7 +793,7 @@
             <div class="form-group"><label class="form-label" for="expPrincipalPaid">Bagian yang mengurangi pokok (Rp)</label>
               <div class="amount-input-wrap"><span class="amount-prefix">Rp</span>
                 <input type="text" inputmode="numeric" class="form-input currency-mask" id="expPrincipalPaid" placeholder="0" /></div></div>
-            <div class="muted micro-label">Isi pokok saja; bunga dan biaya tetap tercatat dalam pengeluaran, tetapi tidak mengurangi sisa utang.</div>
+            <div class="muted micro-label">Jika memilih kewajiban, isi bagian yang benar-benar mengurangi saldo utangnya (maksimal jumlah pengeluaran). Jika tidak menautkan utang, biarkan “Tidak ditautkan”. Bunga/biaya tetap tercatat sebagai pengeluaran.</div>
           </div>
           <div class="form-group mb-20">
             <div class="form-label">Sumber Dana</div>

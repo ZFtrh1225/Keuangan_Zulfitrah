@@ -6,7 +6,7 @@
  *  - Apps Script API (POST): network-only (data must be fresh)
  */
 
-const CACHE_NAME = 'mtpro-v13-debt-payments';
+const CACHE_NAME = 'mtpro-v14-debt-refresh';
 const STATIC_ASSETS = [
   './',
   './index.html',
