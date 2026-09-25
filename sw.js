@@ -6,7 +6,7 @@
  *  - Apps Script API (POST): network-only (data must be fresh)
  */
 
-const CACHE_NAME = 'mtpro-v9-scenario-planning';
+const CACHE_NAME = 'mtpro-v10-action-priorities';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -17,6 +17,7 @@ const STATIC_ASSETS = [
   './js/api.js',
   './js/charts.js',
   './js/scenarios.js',
+  './js/action-priorities.js',
   './js/dialog.js',
   './js/goals-gamification.js',
   './js/inflation-calculator.js',
