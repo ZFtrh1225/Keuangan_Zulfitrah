@@ -29,6 +29,7 @@
   const store = MT.store;
   const state = MT.state;
   const charts = MT.charts;
+  let goalLoadSeq = 0;
 
   // ────────────────────────────────────────────────────────────────
   //  CATEGORIES (dynamically loaded from backend, single source of truth)
@@ -495,17 +496,32 @@
   }
 
   async function loadGoals() {
+    const seq = ++goalLoadSeq;
     // optimistic from cache
     const cached = store.getCachedGoals();
     if (cached && cached.length) {
       store.setGoals(cached);
       renderGoals(cached);
+      renderGoalOptions();
     }
     const res = await api.listGoals();
+    if (seq !== goalLoadSeq) return;
     if (res.success) {
       store.setGoals(res.goals || []);
       renderGoals(res.goals || []);
+      renderGoalOptions();
     }
+  }
+
+  function renderGoalOptions() {
+    const select = $('savGoalSelect');
+    if (!select) return;
+    const current = select.value;
+    select.replaceChildren(new Option('Tanpa tujuan', ''));
+    state.goals.forEach(g => {
+      if (g.id) select.add(new Option(g.name || 'Tujuan', g.id));
+    });
+    if (Array.from(select.options).some(o => o.value === current)) select.value = current;
   }
 
   async function loadTransactions() {
@@ -1196,6 +1212,11 @@
         <label class="form-label" for="edDestination">Rekening tujuan</label>
         <input type="text" class="form-input" id="edDestination" value="${escapeHtml(tx.destination || tx.source || '')}" />
         ${!tx.destination ? '<div class="muted micro-label">Catatan lama: masukkan dompet asal yang sebenarnya untuk merekonsiliasi saldo.</div>' : ''}
+        <label class="form-label" for="edGoalId">Tujuan (opsional)</label>
+        <select class="form-input" id="edGoalId">
+          <option value="">Tanpa tujuan</option>
+          ${state.goals.map(g => `<option value="${escapeHtml(g.id || '')}" ${tx.goalId === g.id ? 'selected' : ''}>${escapeHtml(g.name || 'Tujuan')}</option>`).join('')}
+        </select>
       </div>` : ''}
     `;
     setupCurrencyMasks();
@@ -1220,6 +1241,7 @@
     if (kind === 'saving') {
       fields.source = fields.source.trim();
       fields.destination = $('edDestination').value.trim();
+      fields.goalId = $('edGoalId').value;
       if (!fields.source || !fields.destination || fields.source === fields.destination) {
         return showToast('Dompet asal dan rekening tujuan harus berbeda.', 'error');
       }
@@ -1237,6 +1259,7 @@
         store.invalidateAllCache();
         loadDashboard();
         loadTransactions();
+        if (kind === 'saving') loadGoals();
       } else {
         showToast('Gagal: ' + (res.error || 'unknown'), 'error');
       }
@@ -1261,6 +1284,7 @@
         store.invalidateAllCache();
         loadDashboard();
         loadTransactions();
+        if (kind === 'saving') loadGoals();
       } else {
         showToast('Gagal: ' + (res.error || 'unknown'), 'error');
       }
@@ -1314,6 +1338,7 @@
             <span class="goal-pct ${done ? 'done' : ''}">${pct.toFixed(0)}%</span>
             <span class="target">/ ${fmtRpShort(effTarget)}</span>
           </div>
+          ${g.linkedCount ? `<div class="muted micro-label">${g.linkedCount} setoran terhubung</div>` : ''}
           ${infl.note ? `<div class="goal-inflation-note">${escapeHtml(infl.note)}</div>` : ''}
           <div class="goal-meta">
             <div>${monthsLeft != null && !done ? '~' + fmtRpShort(monthlyNeed) + '/bulan' : (done ? '🏆 Tercapai!' : 'Tanpa deadline')}</div>
@@ -1335,13 +1360,22 @@
     grid.querySelectorAll('[data-goal-del]').forEach(b => {
       b.addEventListener('click', async e => {
         e.stopPropagation();
-        const ok = await MT.dialog.confirm('Hapus tujuan ini?', {
+        const goal = state.goals.find(x => x.rowIndex === parseInt(b.dataset.goalDel, 10));
+        const linkedCount = goal && goal.linkedCount || 0;
+        const ok = await MT.dialog.confirm(linkedCount
+          ? `Hapus tujuan ini? ${linkedCount} transaksi tabungan tetap tersimpan dan tautannya dilepas.`
+          : 'Hapus tujuan ini?', {
           title: 'Hapus Tujuan',
           danger: true, okLabel: 'Hapus', icon: '🎯'
         });
         if (!ok) return;
         const res = await api.deleteGoal(parseInt(b.dataset.goalDel, 10));
-        if (res.success) { showToast(res.msg, 'success'); loadGoals(); }
+        if (res.success) {
+          showToast(res.msg, 'success');
+          store.invalidateAllCache();
+          loadGoals();
+          loadTransactions();
+        }
         else showToast('Gagal: ' + res.error, 'error');
       });
     });
@@ -1354,7 +1388,7 @@
       if (g) {
         $('goalName').value = g.name || '';
         $('goalTarget').value = (g.target || 0).toLocaleString('id-ID');
-        $('goalSaved').value = (g.saved || 0).toLocaleString('id-ID');
+        $('goalSaved').value = (g.savedBaseline != null ? g.savedBaseline : g.saved || 0).toLocaleString('id-ID');
         $('goalDeadline').value = g.deadline || '';
         $('goalCategory').value = g.category || 'Lainnya';
         $('goalNotes').value = g.notes || '';
@@ -1413,10 +1447,24 @@
   }
 
   // ── Goal Deposit (tambah setoran ke goal) ──
+  function populateDepositWallets() {
+    const names = Array.from(new Set([
+      'Cash', 'BRI', 'BCA', 'Mandiri', 'Superbank', 'E-Wallet', 'Investasi',
+      ...Object.keys(state.wallets || {})
+    ]));
+    for (const id of ['depositSource', 'depositDestination']) {
+      const select = $(id);
+      select.replaceChildren(...names.map(name => new Option(name, name)));
+    }
+    $('depositSource').value = 'Cash';
+    $('depositDestination').value = 'BRI';
+  }
+
   function openGoalDepositModal(rowIndex) {
     const g = state.goals.find(x => x.rowIndex === rowIndex);
-    if (!g) {
-      showToast('Tujuan tidak ditemukan', 'error');
+    if (!g || !g.id) {
+      showToast('Tujuan belum siap. Muat ulang daftar tujuan.', 'error');
+      loadGoals();
       return;
     }
     $('depositGoalRow').value = String(rowIndex);
@@ -1426,6 +1474,9 @@
     $('depositGoalProgress').innerHTML =
       `Saat ini: <b>${fmtRp(g.saved)}</b> / ${fmtRp(g.target)} (${pct}%) · Sisa: <b>${fmtRp(remaining)}</b>`;
     $('depositAmount').value = '';
+    populateDepositWallets();
+    const now = new Date();
+    $('depositDate').value = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
     setupCurrencyMasks();
     openModal('goalDepositModalOverlay');
     setTimeout(() => $('depositAmount').focus(), 200);
@@ -1434,15 +1485,32 @@
   async function submitGoalDeposit() {
     const rowIndex = parseInt($('depositGoalRow').value, 10);
     const amount = parseRp($('depositAmount').value);
-    if (!rowIndex || amount <= 0) {
-      showToast('Masukkan nominal setoran!', 'error');
-      return;
+    const g = state.goals.find(x => x.rowIndex === rowIndex);
+    const data = {
+      type: 'Setoran Tujuan', amount, date: $('depositDate').value,
+      source: $('depositSource').value, destination: $('depositDestination').value,
+      goalId: g && g.id || '', notes: g ? 'Tujuan: ' + g.name : ''
+    };
+    if (!g || !g.id || !data.date || amount <= 0) return showToast('Lengkapi tujuan, tanggal dan nominal setoran.', 'error');
+    if (!data.source || !data.destination || data.source === data.destination) {
+      return showToast('Dompet asal dan rekening tujuan harus berbeda.', 'error');
+    }
+    const balance = state.wallets[data.source] || 0;
+    if (amount > balance) {
+      const ok = await MT.dialog.confirm(
+        `Saldo ${data.source} hanya ${fmtRp(balance)}. Tetap simpan?`,
+        { title: 'Saldo Tidak Cukup', type: 'warn', icon: '⚠️', okLabel: 'Tetap Simpan' }
+      );
+      if (!ok) return;
     }
     await submitWithGuard(async () => {
-      const res = await api.addGoalDeposit(rowIndex, amount);
+      const res = await api.addSaving(data);
       if (res.success) {
         showToast(res.msg || 'Setoran tersimpan', 'success');
         closeModal('goalDepositModalOverlay');
+        store.invalidateAllCache();
+        loadDashboard();
+        loadTransactions();
         loadGoals();
       } else {
         showToast('Gagal: ' + (res.error || 'unknown'), 'error');
@@ -1585,7 +1653,8 @@
       amount: parseRp($('savAmount').value),
       notes: $('savNotes').value,
       source: getActivePill('savFromPills') || 'Cash',
-      destination: getActivePill('savSourcePills') || 'BRI'
+      destination: getActivePill('savSourcePills') || 'BRI',
+      goalId: $('savGoalSelect').value
     };
     if (!data.date || data.amount <= 0) return showToast('Lengkapi tanggal & jumlah!', 'error');
     if (data.source === data.destination) return showToast('Dompet asal dan rekening tujuan harus berbeda.', 'error');
@@ -1639,6 +1708,7 @@
       store.invalidateAllCache();
       loadDashboard();
       loadTransactions();
+      loadGoals();
     } else {
       showToast('Gagal: ' + (res.error || 'unknown'), 'error');
     }
@@ -1649,6 +1719,7 @@
      'assetName', 'assetValue', 'assetInst', 'debtName', 'debtValue', 'debtInst'].forEach(id => {
       const el = $(id); if (el) el.value = '';
     });
+    if ($('savGoalSelect')) $('savGoalSelect').value = '';
     setDefaultDates();
   }
 

@@ -85,7 +85,7 @@ test('a saving moves money between wallets without shrinking net worth', () => {
   assert.equal(data.summary.savingsRate, 20);
   assert.equal(data.legacySavingsCount, 0);
   assert.deepEqual(Array.from(sheets.get('Savings').rows[0]),
-    ['Date', 'Type', 'Amount', 'Notes', 'Source', 'Destination']);
+    ['Date', 'Type', 'Amount', 'Notes', 'Source', 'Destination', 'GoalId']);
 });
 
 test('legacy savings stay unchanged until their origin is reconciled', () => {
@@ -122,4 +122,101 @@ test('mutations cannot return a cached dashboard from before the write', () => {
   assert.equal(app.getDashboardData(9, 2026).summary.totalInc, 0);
   app.addIncome({ date: '2026-09-01', type: 'Gaji', amount: 400000, source: 'Cash' });
   assert.equal(app.getDashboardData(9, 2026).summary.totalInc, 400000);
+});
+
+test('legacy goal progress is preserved and a linked saving updates it once', () => {
+  const { context: app, sheets } = backend();
+  app.initSheets_();
+  sheets.get('Goals').appendRow(['2026-01-01', 'Dana Darurat', 1000000, 300000,
+    '2027-01-01', 'Dana Darurat', '', false, 6]);
+  const goal = app.listGoals().goals[0];
+  assert.ok(goal.id);
+  assert.equal(goal.savedBaseline, 300000);
+  assert.equal(goal.saved, 300000);
+  assert.equal(sheets.get('Goals').rows[1][3], 300000);
+
+  assert.equal(app.addSaving({ date: '2026-09-02', type: 'Setoran Tujuan', amount: 200000,
+    source: 'Cash', destination: 'BRI', goalId: goal.id }).success, true);
+  const updated = app.listGoals().goals[0];
+  assert.equal(updated.id, goal.id);
+  assert.equal(updated.saved, 500000);
+  assert.equal(updated.linkedCount, 1);
+  assert.equal(sheets.get('Goals').rows[1][3], 300000);
+  assert.equal(app.getDashboardData(9, 2026).netWorth.netWorth, 0);
+
+  app.editTransaction({ sheet: 'saving', rowIndex: 2, fields: {
+    amount: 100000, source: 'Cash', destination: 'BRI', goalId: goal.id
+  } });
+  assert.equal(app.listGoals().goals[0].saved, 400000);
+  app.deleteTransaction('saving', 2);
+  assert.equal(app.listGoals().goals[0].saved, 300000);
+});
+
+test('goal IDs survive row shifts and deleting a goal preserves transfers', () => {
+  const { context: app, sheets } = backend();
+  app.addGoal({ name: 'Tujuan A', target: 1000000, saved: 0 });
+  app.addGoal({ name: 'Tujuan B', target: 1000000, saved: 50000 });
+  const [a, b] = app.listGoals().goals;
+  app.addSaving({ date: '2026-09-02', type: 'Setoran Tujuan', amount: 20000,
+    source: 'Cash', destination: 'BRI', goalId: b.id });
+  app.deleteGoal(a.rowIndex);
+  assert.equal(app.listGoals().goals[0].id, b.id);
+  assert.equal(app.listGoals().goals[0].saved, 70000);
+  const deleted = app.deleteGoal(2);
+  assert.match(deleted.msg, /1 transaksi tabungan tetap tersimpan/);
+  assert.equal(sheets.get('Savings').rows[1][6], '');
+  assert.equal(sheets.get('Savings').rows.length, 2);
+  assert.equal(app.getDashboardData(9, 2026).walletBalances.BRI, 20000);
+});
+
+test('relinking a saving moves goal progress without another money movement', () => {
+  const { context: app } = backend();
+  app.addGoal({ name: 'A', target: 100000 });
+  app.addGoal({ name: 'B', target: 100000 });
+  const [a, b] = app.listGoals().goals;
+  app.addSaving({ date: '2026-09-02', type: 'Tabungan', amount: 30000,
+    source: 'Cash', destination: 'BRI', goalId: a.id });
+  const before = app.getDashboardData(9, 2026).walletBalances;
+  app.editTransaction({ sheet: 'saving', rowIndex: 2,
+    fields: { goalId: b.id, source: 'Cash', destination: 'BRI' } });
+  const [newA, newB] = app.listGoals().goals;
+  assert.equal(newA.saved, 0);
+  assert.equal(newB.saved, 30000);
+  assert.equal(app.getDashboardData(9, 2026).walletBalances.Cash, before.Cash);
+  assert.equal(app.getDashboardData(9, 2026).walletBalances.BRI, before.BRI);
+});
+
+test('an unknown goal cannot create or relink a saving', () => {
+  const { context: app, sheets } = backend();
+  const rejected = app.addSaving({ date: '2026-09-02', type: 'Setoran Tujuan', amount: 10000,
+    source: 'Cash', destination: 'BRI', goalId: 'missing' });
+  assert.equal(rejected.success, false);
+  assert.equal(sheets.get('Savings').rows.length, 1);
+  app.addSaving({ date: '2026-09-02', type: 'Tabungan', amount: 10000,
+    source: 'Cash', destination: 'BRI' });
+  const edit = app.editTransaction({ sheet: 'saving', rowIndex: 2,
+    fields: { goalId: 'missing', amount: 9000 } });
+  assert.equal(edit.success, false);
+  assert.equal(sheets.get('Savings').rows[1][2], 10000);
+});
+
+test('goal migration appends IDs without overwriting custom sheet columns', () => {
+  const { context: app, sheets } = backend();
+  app.initSheets_();
+  const goals = sheets.get('Goals');
+  const savings = sheets.get('Savings');
+  goals.rows[0].splice(9, 0, 'Custom');
+  goals.appendRow(['2026-01-01', 'Pendidikan', 1000000, 100000,
+    '2027-01-01', 'Pendidikan', '', false, 6, 'keep me', '']);
+  savings.rows[0].splice(6, 0, 'Custom');
+
+  const goal = app.listGoals().goals[0];
+  assert.ok(goal.id);
+  assert.equal(goals.rows[1][9], 'keep me');
+  assert.equal(goals.rows[1][10], goal.id);
+  app.addSaving({ date: '2026-09-02', type: 'Setoran Tujuan', amount: 50000,
+    source: 'Cash', destination: 'BRI', goalId: goal.id });
+  assert.equal(savings.rows[1][6], '');
+  assert.equal(savings.rows[1][7], goal.id);
+  assert.equal(app.listGoals().goals[0].saved, 150000);
 });
