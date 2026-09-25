@@ -480,6 +480,20 @@ test('legacy debts get IDs after custom columns without changing their balances'
   assert.equal(app.getDashboardData(9, 2026).netWorth.debtDetails[0].id, initial.id);
 });
 
+test('a fresh dashboard read bypasses an older cached debt total and matches the detail', () => {
+  const { context: app, sheets } = backend('2026-09-28T12:00:00+07:00');
+  app.addDebt({ type: 'Kartu Kredit/Paylater', name: 'Paylater', value: 2113576 });
+  const query = fresh => app.handleAction_({ postData: { contents: JSON.stringify({
+    action: 'getDashboardData', data: { month: 9, year: 2026, fresh }
+  }) } });
+  assert.equal(query(false).netWorth.totalDebts, 2113576);
+  sheets.get('Debts').rows[1][3] = 2013576; // Simulate an external Sheet change while cache lives.
+  assert.equal(query(false).netWorth.totalDebts, 2113576);
+  const updated = query(true);
+  assert.equal(updated.netWorth.totalDebts, 2013576);
+  assert.equal(updated.netWorth.debtDetails[0].value, updated.netWorth.totalDebts);
+});
+
 test('bill input validation prevents invented dates and unknown wallets', () => {
   const { context: app } = backend('2026-12-29T12:00:00+07:00');
   assert.equal(app.addBill({ name: 'A', dueDate: '2026-02-31', amount: 10 }).success, false);

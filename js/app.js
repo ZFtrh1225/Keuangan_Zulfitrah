@@ -32,6 +32,7 @@
   const scenarios = MT.scenarios;
   const actionPriorities = MT.actionPriorities;
   let goalLoadSeq = 0;
+  let dashboardLoadSeq = 0;
   let prioritiesDashboardFresh = false;
   let prioritiesDashboardError = '';
   let prioritiesGoalsFresh = false;
@@ -335,6 +336,8 @@
     $('btnPdf').addEventListener('click', downloadPDF);
     $('btnGemini').addEventListener('click', askGemini);
     $('btnBudgetRule').addEventListener('click', openSettings);
+    $('btnRefreshNetWorth').addEventListener('click', () =>
+      submitWithGuard(() => loadDashboard({ fresh: true }), 'btnRefreshNetWorth', 'Memuat angka…'));
 
     // Submit handlers
     $('btnSubmitIncome').addEventListener('click', submitIncome);
@@ -514,14 +517,16 @@
   // ────────────────────────────────────────────────────────────────
   //  DATA LOADERS
   // ────────────────────────────────────────────────────────────────
-  async function loadDashboard() {
+  async function loadDashboard(options) {
+    const seq = ++dashboardLoadSeq;
     state.isLoading = true;
     prioritiesDashboardFresh = false;
     prioritiesDashboardError = '';
     renderActionPriorities();
     if (!state.dashboard) showLoading(true);
     const requestMonth = state.currentMonth, requestYear = state.currentYear;
-    const res = await api.getDashboardData(requestMonth, requestYear);
+    const res = await api.getDashboardData(requestMonth, requestYear, !!(options && options.fresh));
+    if (seq !== dashboardLoadSeq || requestMonth !== state.currentMonth || requestYear !== state.currentYear) return;
     showLoading(false);
     state.isLoading = false;
     if (!res.success) {
@@ -530,7 +535,6 @@
       renderActionPriorities();
       return;
     }
-    if (requestMonth !== state.currentMonth || requestYear !== state.currentYear) return;
     store.setDashboard(res);
     store.setCachedDashboard(state.currentMonth, state.currentYear, res);
     renderAll(res);
@@ -1004,8 +1008,10 @@
     const recorded = history.filter(p => p.source === 'snapshot');
     charts.renderSparkline('nwSparkline', history, '#00e5b4');
     $('nwSnapshotInfo').textContent = recorded.length
-      ? recorded.length + ' bulan tercatat · terakhir ' + recorded[recorded.length - 1].label +
-        '. Bulan tanpa catatan menjadi jeda pada grafik.'
+      ? recorded.length === 1
+        ? 'Titik hijau = satu catatan kekayaan bersih (' + recorded[0].label + '). Garis tren muncul setelah ada catatan pada bulan lain.'
+        : recorded.length + ' bulan tercatat · terakhir ' + recorded[recorded.length - 1].label +
+          '. Bulan tanpa catatan menjadi jeda pada grafik.'
       : 'Belum ada snapshot. Angka historis yang dulu ditaksir dari arus kas tidak ditampilkan sebagai nilai pasti.';
 
     // Ratios
@@ -1534,13 +1540,15 @@
     if (!fields.date || fields.amount <= 0) {
       return showToast('Tanggal & jumlah wajib diisi dengan nominal > 0!', 'error');
     }
+    if (kind === 'expense' && fields.debtId && (!fields.principalPaid || fields.principalPaid > fields.amount))
+      return showToast('Jika memilih kewajiban, isi bagian yang mengurangi saldo utang (Rp1 sampai jumlah pengeluaran).', 'error');
     await submitWithGuard(async () => {
       const res = await api.editTransaction(kind, rowIndex, fields, $('editBillId').value, $('editDebtId').value);
       if (res.success) {
         showToast(res.msg || 'Tersimpan', 'success');
         closeModal('editTxModalOverlay');
         store.invalidateAllCache();
-        loadDashboard();
+        loadDashboard({ fresh: true });
         loadTransactions();
         if (kind === 'saving') loadGoals();
       } else {
@@ -1568,7 +1576,7 @@
         showToast(res.msg || 'Terhapus', 'success');
         closeModal('editTxModalOverlay');
         store.invalidateAllCache();
-        loadDashboard();
+        loadDashboard({ fresh: true });
         loadTransactions();
         if (kind === 'saving') loadGoals();
       } else {
@@ -1904,6 +1912,8 @@
       data.principalPaid = data.debtId ? parseRp($('expPrincipalPaid').value) : 0;
     }
     if (!cat || !data.date || data.amount <= 0) return showToast('Lengkapi kategori, tanggal & jumlah!', 'error');
+    if (data.debtId && (!data.principalPaid || data.principalPaid > data.amount))
+      return showToast('Jika memilih kewajiban, isi bagian yang mengurangi saldo utang (Rp1 sampai jumlah pengeluaran).', 'error');
     const bal = state.wallets[data.source] || 0;
     if (data.amount > bal) {
       const ok = await MT.dialog.confirm(
@@ -2023,7 +2033,7 @@
       clearForms();
       closeModal(modalId || 'modalOverlay');
       store.invalidateAllCache();
-      loadDashboard();
+      loadDashboard({ fresh: true });
       loadTransactions();
       loadGoals();
     } else {

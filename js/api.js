@@ -109,7 +109,7 @@
   }
 
   // ── Read ──
-  const getDashboardData = (month, year) => call('getDashboardData', { month, year });
+  const getDashboardData = (month, year, fresh) => call('getDashboardData', { month, year, fresh: fresh === true });
   const listRecentTransactions = (month, year, limit) => call('listRecentTransactions', { month, year, limit: limit || 100 });
   const listGoals = () => call('listGoals', {});
   const getSettings = () => call('getSettings', {});
