@@ -6,7 +6,7 @@
  *  - Apps Script API (POST): network-only (data must be fresh)
  */
 
-const CACHE_NAME = 'mtpro-v4-2026-09-05';
+const CACHE_NAME = 'mtpro-v5-savings-ledger';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -21,6 +21,7 @@ const STATIC_ASSETS = [
   './js/inflation-calculator.js',
   './js/debt-optimizer.js',
   './js/lifestyle-creep-detector.js',
+  './js/loan-calculator.js',
   './js/app.js',
   './js/tab-navigation.js',
   './js/onboarding-tour.js'

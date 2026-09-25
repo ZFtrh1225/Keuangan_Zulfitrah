@@ -23,7 +23,7 @@ Keuangan_Zulfitrah/
 
 ### 1. Backend (Google Apps Script)
 1. Buka Google Sheet kamu → **Extensions → Apps Script**
-2. Hapus seluruh isi `Code.gs` lama, paste isi `Code.gs` di repo ini
+2. Cadangkan file `Code.gs` dan Google Sheet, lalu ganti isi `Code.gs` dengan versi repo ini.
 3. **PENTING**: Pindahkan API key Gemini ke Script Properties:
    - **File → Project Settings → Script Properties → Add Property**
    - Key: `GEMINI_API_KEY`
@@ -33,8 +33,8 @@ Keuangan_Zulfitrah/
    > Jika URL tidak berubah, tidak perlu update.
 
 ### 2. Frontend (GitHub Pages)
-1. Push branch `feat/v2-financial-intelligence` ke GitHub
-2. Merge ke `main` (atau test dari branch dulu)
+1. Tinjau dan merge pull request perubahan frontend ke `main` setelah backend diperbarui.
+2. Muat ulang aplikasi/PWA untuk mengambil berkas frontend yang baru.
 3. GitHub Pages akan auto-rebuild
 4. Buka URL Pages — semua file (`index.html`, `styles.css`, `js/*.js`, `manifest.json`, `sw.js`) ter-host otomatis
 
@@ -81,7 +81,24 @@ Untuk mengubah:
 - **Cache TTL**: edit `CACHE_TTL_SECONDS` di `Code.gs`
 - **Theme color**: edit CSS tokens di `styles.css` section 1
 
-## ⚠️ Catatan Migrasi Data
+## ⚠️ Catatan Migrasi Data Tabungan
 
-Tidak ada perubahan struktur sheet — data lama tetap kompatibel.
-Sheet baru `Goals` akan dibuat otomatis saat pertama kali dipanggil.
+Backend perlu diperbarui dan di-deploy **sebelum** frontend baru dipakai. Frontend lama
+tidak dapat menambah tabungan setelah backend baru aktif: muat ulang aplikasi/PWA
+untuk mendapatkan formulir yang meminta dompet asal dan rekening tujuan.
+
+Backend menambahkan kolom `Destination` di sebelah kanan sheet `Savings` saat
+inisialisasi. Baris lama tidak diubah: kolom `Source` pada formulir lama berlabel
+“Rekening Tujuan”, sehingga dompet asal sebenarnya tidak diketahui. Dashboard
+mempertahankan perhitungan historis lama dan menampilkan jumlah baris yang perlu
+direkonsiliasi. Setelah memeriksa riwayat rekening, buka transaksi tabungan lama,
+isi **Dompet asal** dan periksa **Rekening tujuan**; saldo akan dihitung ulang.
+Jangan mengisi dompet asal berdasarkan dugaan.
+
+Tabungan baru adalah perpindahan antar dompet. Bila tujuan merupakan investasi,
+atur jenis dompet tujuan sebagai `Investasi`; jangan catat saldo akun yang sama
+sekali lagi sebagai aset manual karena itu menggandakan kekayaan bersih.
+
+Setoran pada kartu Tujuan masih merupakan catatan progress terpisah. Pencatatan
+tabungan baru belum otomatis mengubah progress tujuan; integrasi ini memerlukan
+pemetaan tujuan dan setoran lama sebelum data historis dapat disatukan.

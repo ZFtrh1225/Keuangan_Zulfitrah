@@ -88,7 +88,7 @@
           </div>
         </div>
         <div class="summary-card balance">
-          <div class="sc-label">🏦 Sisa Saldo</div>
+          <div class="sc-label">🏦 Sisa Arus Kas Bulan Ini</div>
           <div class="sc-value balance" id="valBalance">Rp 0</div>
           <div class="sc-meta">
             <span class="sc-compare flat" id="cmpBalance">— 0%</span>
@@ -136,6 +136,7 @@
         <div class="skeleton skeleton-card"></div>
         <div class="skeleton skeleton-card"></div>
       </div>
+      <div class="muted micro-label" id="legacySavingsNotice" hidden></div>
     </section>
 <!-- ═══════════════ Recent Transactions ═══════════════ -->
     <section class="fadeUp">
@@ -751,8 +752,19 @@
               <input type="text" class="form-input" id="savNotes" placeholder="Tujuan / keterangan…" />
             </div>
           </div>
+          <div class="form-group mb-14">
+            <div class="form-label">Dompet Asal *</div>
+            <div class="source-pills" id="savFromPills">
+              <div class="source-pill active" data-val="Cash">💵 Cash</div>
+              <div class="source-pill" data-val="BRI">🏦 BRI</div>
+              <div class="source-pill" data-val="BCA">🏦 BCA</div>
+              <div class="source-pill" data-val="Mandiri">🏦 Mandiri</div>
+              <div class="source-pill" data-val="Superbank">🔵 Superbank</div>
+              <div class="source-pill" data-val="E-Wallet">📱 E-Wallet</div>
+            </div>
+          </div>
           <div class="form-group mb-20">
-            <div class="form-label">Rekening Tujuan</div>
+            <div class="form-label">Rekening Tujuan *</div>
             <div class="source-pills" id="savSourcePills">
               <div class="source-pill active" data-val="BRI">🏦 BRI</div>
               <div class="source-pill" data-val="BCA">🏦 BCA</div>
@@ -761,6 +773,7 @@
               <div class="source-pill" data-val="E-Wallet">📱 E-Wallet</div>
               <div class="source-pill" data-val="Investasi">📈 Investasi</div>
             </div>
+            <div class="muted micro-label">Tabungan memindahkan uang dari dompet asal ke rekening tujuan.</div>
           </div>
           <button class="btn-submit" id="btnSubmitSaving">Simpan Tabungan 💰</button>
         </div>
