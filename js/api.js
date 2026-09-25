@@ -12,7 +12,7 @@
 
   const MT = (window.MT = window.MT || {});
 
-  const API_URL = 'https://script.google.com/macros/s/AKfycbz3KnjYnCYU86d2TAxy53ZMrtR9ZmpbYmcZkuxWYlv9XE7eUB8LXYbep-hROSgLv5ebNg/exec';
+  const API_URL = 'https://script.google.com/macros/s/AKfycbyRX4YVo3psiE2K_j1MmKmn8tRTCfGDLiJjhoINLgF4cr1o_4mrdLoapajvCZDaCQg1DQ/exec';
 
   const DEFAULT_TIMEOUT_MS = 30000;
   const MAX_RETRIES = 2;
