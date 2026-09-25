@@ -129,7 +129,7 @@
     </section>
 <!-- ═══════════════ Wallet Overview ═══════════════ -->
     <section class="fadeUp">
-      <div class="section-title">👛 Saldo Per Dompet</div>
+      <div class="section-title">👛 Saldo Per Dompet Saat Ini</div>
       <div class="wallet-grid" id="walletGrid">
         <div class="skeleton skeleton-card"></div>
         <div class="skeleton skeleton-card"></div>
@@ -366,21 +366,25 @@
 
       <div class="summary-grid">
         <div class="summary-card balance">
-          <div class="sc-label">💎 Total Aset</div>
+          <div class="sc-label">💎 Total Aset Saat Ini</div>
           <div class="sc-value income" id="nwAssets">Rp 0</div>
           <div class="sc-prev">Likuid: <span id="nwLiquid">Rp 0</span></div>
         </div>
         <div class="summary-card expense">
-          <div class="sc-label">📝 Total Hutang</div>
+          <div class="sc-label">📝 Total Hutang Saat Ini</div>
           <div class="sc-value expense" id="nwDebts">Rp 0</div>
         </div>
         <div class="summary-card income">
-          <div class="sc-label">💰 Kekayaan Bersih</div>
+          <div class="sc-label">💰 Kekayaan Bersih Saat Ini</div>
           <div class="sc-value balance" id="nwNet">Rp 0</div>
           <div class="nw-spark-wrap">
             <canvas id="nwSparkline" aria-label="Tren kekayaan bersih"></canvas>
           </div>
         </div>
+      </div>
+      <div class="nw-history-actions">
+        <div class="muted micro-label" id="nwSnapshotInfo" role="status">Riwayat tercatat tersedia setelah mengambil snapshot pertama.</div>
+        <button class="btn btn-ghost btn-sm" id="btnNetWorthHistory">📅 Riwayat &amp; Catat Sekarang</button>
       </div>
 
       <div class="ratio-grid">
@@ -1187,6 +1191,29 @@
           </div>
         </div>
         <button class="btn-submit" id="btnSubmitTransfer">Transfer 🔁</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ MODAL: Riwayat kekayaan bersih ═══════════════ -->
+  <div class="modal-overlay" id="netWorthHistoryOverlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="netWorthHistoryTitle">
+      <div class="modal-header">
+        <div class="modal-top">
+          <div class="modal-heading" id="netWorthHistoryTitle">📅 Riwayat Kekayaan Bersih</div>
+          <button class="modal-close" data-close="netWorthHistoryOverlay" aria-label="Tutup">×</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <p class="muted micro-label">Snapshot menyimpan angka aplikasi saat tombol ditekan. Nilai aset dan utang pada bulan sebelum pencatatan pertama tidak dapat dipastikan dari transaksi saja.</p>
+        <div class="nw-history-current" id="nwHistoryCurrent"></div>
+        <div class="form-group">
+          <label class="form-label" for="nwSnapshotNotes">Catatan (opsional)</label>
+          <input type="text" class="form-input" id="nwSnapshotNotes" maxlength="250" placeholder="Misalnya setelah mencocokkan saldo rekening" />
+        </div>
+        <button class="btn-submit" id="btnRecordNetWorthSnapshot">Catat Kondisi Sekarang 📸</button>
+        <h3>Catatan berdasarkan tanggal</h3>
+        <div class="nw-history-list" id="nwHistoryList">Memuat riwayat…</div>
       </div>
     </div>
   </div>

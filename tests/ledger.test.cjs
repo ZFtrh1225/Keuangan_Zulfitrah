@@ -279,3 +279,71 @@ test('wallet checks accept zero, reject invalid input and retain custom columns'
   assert.equal(app.listWalletReconciliations().records[0].difference, 0);
   assert.equal(app.applyWalletAdjustment({ id: check.id }).success, false);
 });
+
+test('past net worth is unknown until captured; repeated capture with identical values is idempotent', () => {
+  const { context: app, sheets } = backend();
+  app.addWallet({ name: 'Cash', opening: 100000 });
+  const initial = app.getDashboardData(9, 2026);
+  assert.equal(initial.netWorth.netWorth, 100000);
+  assert.deepEqual(Array.from(initial.netWorth.netWorthHistory), []);
+  const first = app.recordNetWorthSnapshot({ notes: 'Saldo awal diperiksa' });
+  assert.equal(first.success, true);
+  assert.equal(first.alreadyRecorded, undefined);
+  const repeat = app.recordNetWorthSnapshot({ notes: 'Klik kedua' });
+  assert.equal(repeat.success, true);
+  assert.equal(repeat.alreadyRecorded, true);
+  assert.equal(repeat.id, first.id);
+  assert.equal(sheets.get('NetWorthSnapshots').rows.length, 2);
+  const snapshots = app.listNetWorthSnapshots();
+  assert.equal(snapshots.snapshots[0].netWorth, 100000);
+  assert.equal(snapshots.snapshots[0].notes, 'Saldo awal diperiksa');
+  assert.equal(snapshots.series.length, 1);
+  assert.equal(app.getDashboardData(9, 2026).netWorth.netWorthHistory[0].source, 'snapshot');
+});
+
+test('new asset and debt values cannot rewrite an older snapshot on the same day', () => {
+  const { context: app, sheets } = backend();
+  app.addWallet({ name: 'BRI', opening: 100000 });
+  app.addAsset({ type: 'Investasi', name: 'Reksa Dana', value: 50000, inst: 'Bank' });
+  app.addDebt({ type: 'Cicilan', name: 'Utang', value: 10000, inst: 'Bank' });
+  const before = app.recordNetWorthSnapshot({ notes: 'Sebelum perubahan' });
+  assert.equal(app.listNetWorthSnapshots().snapshots[0].netWorth, 140000);
+  app.addAsset({ type: 'Investasi', name: 'Emas', value: 20000, inst: 'Rumah' });
+  app.addDebt({ type: 'Cicilan', name: 'Kredit', value: 5000, inst: 'Bank' });
+  const after = app.recordNetWorthSnapshot({ notes: 'Setelah perubahan' });
+  assert.notEqual(after.id, before.id);
+  const history = app.listNetWorthSnapshots();
+  assert.equal(history.snapshots.length, 2);
+  assert.equal(history.snapshots[1].netWorth, 140000);
+  assert.equal(history.snapshots[0].netWorth, 155000);
+  assert.equal(history.series.length, 1); // titik terakhir bulan berjalan
+  assert.equal(history.series[0].value, 155000);
+  assert.equal(sheets.get('NetWorthSnapshots').rows.length, 3);
+});
+
+test('wallet adjustment changes the next snapshot without inventing historic income', () => {
+  const { context: app } = backend();
+  app.addWallet({ name: 'Cash', opening: 100000 });
+  app.recordNetWorthSnapshot({});
+  const check = app.recordWalletReconciliation({
+    wallet: 'Cash', actualBalance: 95000, notes: 'Selisih kas'
+  });
+  assert.equal(app.applyWalletAdjustment({ id: check.id }).success, true);
+  app.recordNetWorthSnapshot({});
+  const history = app.listNetWorthSnapshots().snapshots;
+  assert.equal(history[0].netWorth, 95000);
+  assert.equal(history[1].netWorth, 100000);
+  assert.equal(app.getDashboardData(9, 2026).summary.totalInc, 0);
+  assert.equal(app.getDashboardData(9, 2026).summary.totalExp, 0);
+});
+
+test('a missing month is an explicit gap rather than an invented net worth', () => {
+  const { context: app } = backend();
+  const series = app.netWorthSnapshotSeries_([
+    { date: '2026-01-31', netWorth: 150000 },
+    { date: '2026-03-10', netWorth: 250000 }
+  ]);
+  assert.deepEqual(Array.from(series, p => p.source), ['snapshot', 'missing', 'snapshot']);
+  assert.deepEqual(Array.from(series, p => p.value), [150000, null, 250000]);
+  assert.equal(series[1].label, 'Feb 2026');
+});

@@ -1956,6 +1956,40 @@ select.form-input {
   color: var(--t1);
 }
 .reconciliation-item .btn { justify-self: start; margin-top: 4px; }
+.nw-history-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 12px 0 18px;
+}
+.nw-history-current {
+  background: var(--card2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--t1);
+}
+.nw-history-list { display: grid; gap: 8px; }
+.nw-history-item {
+  background: var(--card2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 12px 14px;
+  color: var(--t3);
+  font-size: 12px;
+  display: grid;
+  gap: 5px;
+}
+.nw-history-item strong { font-size: 14px; color: var(--t1); }
+.nw-history-item .nw-history-row {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+}
 
 /* ── 22.4 Auth modal ── */
 .auth-status-badge {

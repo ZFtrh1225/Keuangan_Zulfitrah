@@ -22,7 +22,8 @@ const SHEET_NAMES = {
   BILL: 'Bills',
   WALLET: 'Wallets',     // Daftar dompet + saldo awal (opening balance)
   TRANSFER: 'Transfers', // Transfer antar dompet
-  RECONCILIATION: 'WalletReconciliations' // Pemeriksaan saldo dan koreksi yang dapat diaudit
+  RECONCILIATION: 'WalletReconciliations', // Pemeriksaan saldo dan koreksi yang dapat diaudit
+  NET_WORTH_SNAPSHOT: 'NetWorthSnapshots' // Nilai kekayaan yang benar-benar dicatat pada suatu tanggal
 };
 
 // ─── Auth: shared-secret antara frontend & backend ──────────────────
@@ -164,6 +165,7 @@ function handleAction_(e) {
       case 'listBills':              return listBills(data.month, data.year);
       case 'listWallets':            return listWallets();
       case 'listWalletReconciliations': return listWalletReconciliations();
+      case 'listNetWorthSnapshots': return listNetWorthSnapshots();
       case 'listTransfers':          return listTransfers(data.month, data.year);
       case 'getAuthStatus':          return getAuthStatus();
       case 'getLifestyleCreepAnalysis': return getLifestyleCreepAnalysis();
@@ -180,6 +182,7 @@ function handleAction_(e) {
       case 'addWallet':              return addWallet(data);
       case 'recordWalletReconciliation': return recordWalletReconciliation(data);
       case 'applyWalletAdjustment':  return applyWalletAdjustment(data);
+      case 'recordNetWorthSnapshot':  return recordNetWorthSnapshot(data);
       case 'addTransfer':            return addTransfer(data);
       // ── Update ──
       case 'editTransaction':        return editTransaction(data);
@@ -244,7 +247,8 @@ function initSheets_() {
     { name: SHEET_NAMES.WALLET,  headers: ['Name', 'OpeningBalance', 'OpeningDate', 'Type', 'Notes', 'CreatedAt'] },
     // Transfers antar dompet (tidak menambah/mengurangi total kekayaan)
     { name: SHEET_NAMES.TRANSFER, headers: ['Date', 'FromWallet', 'ToWallet', 'Amount', 'Fee', 'Notes'] },
-    { name: SHEET_NAMES.RECONCILIATION, headers: ['Id', 'CheckedAt', 'Wallet', 'BookBalance', 'ActualBalance', 'Difference', 'Notes', 'AppliedAt', 'AppliedAmount'] }
+    { name: SHEET_NAMES.RECONCILIATION, headers: ['Id', 'CheckedAt', 'Wallet', 'BookBalance', 'ActualBalance', 'Difference', 'Notes', 'AppliedAt', 'AppliedAmount'] },
+    { name: SHEET_NAMES.NET_WORTH_SNAPSHOT, headers: ['Id', 'RecordedAt', 'Date', 'TotalAssets', 'TotalDebts', 'NetWorth', 'LiquidAssets', 'InvestmentAssets', 'WalletTotal', 'Notes'] }
   ];
   cfg.forEach(c => {
     let sh = ss.getSheetByName(c.name);
@@ -1052,13 +1056,13 @@ function setCachedDashboard_(key, data) {
 //  Main: getDashboardData
 // ════════════════════════════════════════════════════════════════════
 
-function getDashboardData(month, year) {
+function getDashboardData(month, year, options) {
   initSheets_();
   month = parseInt(month);
   year = parseInt(year);
 
   const cacheKey = year + '-' + month;
-  const cached = getCachedDashboard_(cacheKey);
+  const cached = options && options.fresh ? null : getCachedDashboard_(cacheKey);
   if (cached) return cached;
 
   const pm = month === 1 ? 12 : month - 1;
@@ -1279,18 +1283,10 @@ function getDashboardData(month, year) {
     { label: 'Aset Tetap', value: Math.max(0, fixedAssets), color: '#f59e0b' }
   ].filter(x => x.value > 0);
 
-  // ── Net Worth History (6 bulan) ──
-  // Cleanly back-calculate: NW(M) = NW_now - sum(income - expenses) for months > M.
-  // Memakai cashflow surplus saja menghindari double-count savings yang
-  // sudah tercerminkan di asset/wallet snapshot bulan berjalan.
-  let cumulativeCashflowFromNow = 0;
-  const netWorthHistory = sixMonths.slice().reverse().map((m, idx) => {
-    if (idx === 0) {
-      return { label: m.label, value: netWorthFixed };
-    }
-    cumulativeCashflowFromNow += (m.income - m.expenses);
-    return { label: m.label, value: netWorthFixed - cumulativeCashflowFromNow };
-  }).reverse();
+  // Hanya snapshot pada tanggal pencatatan yang boleh membentuk riwayat.
+  // Baris Assets/Debts adalah nilai terkini, sehingga nilainya di masa lalu
+  // tidak dapat disimpulkan dari arus kas bulan berikutnya.
+  const netWorthHistory = netWorthSnapshotSeries_(getNetWorthSnapshots_());
 
   // ── Cashflow Forecast (3 bulan ke depan) — pakai MEDIAN trailing 6 ──
   // Median lebih robust terhadap outlier (mis. THR, bonus tahunan) ketimbang
@@ -1535,6 +1531,109 @@ function getDashboardData(month, year) {
 
   setCachedDashboard_(cacheKey, result);
   return result;
+}
+
+// Nilai historis hanya berasal dari snapshot yang pernah disimpan. Satu titik
+// per bulan memakai catatan terakhir di bulan tersebut; riwayat detail tetap
+// memuat semua pengambilan, termasuk bila ada dua pada hari yang sama.
+function getNetWorthSnapshots_() {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.NET_WORTH_SNAPSHOT);
+  if (!sh || sh.getLastRow() < 2) return [];
+  const rows = getSheetData_(SHEET_NAMES.NET_WORTH_SNAPSHOT);
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  const idx = name => headers.indexOf(name);
+  const values = rows.map(r => {
+    const recorded = new Date(r[idx('RecordedAt')]);
+    const dateCell = r[idx('Date')];
+    const day = typeof dateCell === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateCell)
+      ? dateCell : toIso_(dateCell || recorded);
+    const assets = Number(r[idx('TotalAssets')]);
+    const debts = Number(r[idx('TotalDebts')]);
+    const netWorth = Number(r[idx('NetWorth')]);
+    if (!r[idx('Id')] || isNaN(recorded) || !day ||
+        !Number.isFinite(assets) || !Number.isFinite(debts) || !Number.isFinite(netWorth)) return null;
+    return {
+      id: String(r[idx('Id')]), recordedAt: recorded.toISOString(), date: day,
+      totalAssets: assets, totalDebts: debts, netWorth,
+      liquidAssets: Number(r[idx('LiquidAssets')]) || 0,
+      investmentAssets: Number(r[idx('InvestmentAssets')]) || 0,
+      walletTotal: Number(r[idx('WalletTotal')]) || 0,
+      notes: String(r[idx('Notes')] || '')
+    };
+  }).filter(Boolean);
+  values.sort((a, b) => a.recordedAt.localeCompare(b.recordedAt));
+  return values;
+}
+
+function netWorthSnapshotSeries_(snapshots) {
+  const byMonth = Object.create(null);
+  snapshots.forEach(s => { byMonth[s.date.slice(0, 7)] = s; });
+  const months = Object.keys(byMonth).sort();
+  if (!months.length) return [];
+  const mn = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  const end = months[months.length - 1];
+  const oldest = months[0];
+  const cursor = new Date(Date.UTC(Number(end.slice(0, 4)), Number(end.slice(5, 7)) - 12, 1));
+  const start = cursor.toISOString().slice(0, 7) > oldest ? cursor.toISOString().slice(0, 7) : oldest;
+  const result = [];
+  for (let month = start; month <= end; ) {
+    const s = byMonth[month];
+    const label = mn[Number(month.slice(5, 7)) - 1] + ' ' + month.slice(0, 4);
+    result.push(s
+      ? { date: s.date, label, value: s.netWorth, source: 'snapshot' }
+      : { date: month + '-01', label, value: null, source: 'missing' });
+    const next = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1));
+    month = next.toISOString().slice(0, 7);
+  }
+  return result;
+}
+
+function listNetWorthSnapshots() {
+  initSheets_();
+  const snapshots = getNetWorthSnapshots_();
+  return { success: true, snapshots: snapshots.slice(-50).reverse(),
+    series: netWorthSnapshotSeries_(snapshots) };
+}
+
+function recordNetWorthSnapshot(data) {
+  initSheets_();
+  const notes = String(data.notes || '').trim();
+  if (notes.length > 250) return { success: false, error: 'Catatan maksimal 250 karakter.' };
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) throw new Error('Sistem sedang sibuk, coba lagi sebentar.');
+  try {
+    const now = new Date();
+    const day = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    // Bypass dashboard cache: snapshot merekam keadaan Sheets pada saat tombol ditekan.
+    const d = getDashboardData(Number(day.slice(5, 7)), Number(day.slice(0, 4)), { fresh: true });
+    const nw = d.netWorth;
+    const walletTotal = Object.values(d.walletBalances)
+      .reduce((sum, balance) => sum + (Number(balance) || 0), 0);
+    const existing = getNetWorthSnapshots_().filter(s => s.date === day).pop();
+    if (existing && existing.totalAssets === nw.totalAssets &&
+        existing.totalDebts === nw.totalDebts && existing.netWorth === nw.netWorth &&
+        existing.walletTotal === walletTotal && existing.liquidAssets === nw.liquidAssets &&
+        existing.investmentAssets === nw.investmentAssets) {
+      return { success: true, id: existing.id, alreadyRecorded: true,
+        msg: 'Catatan dengan nilai yang sama sudah tersimpan hari ini.' };
+    }
+    const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.NET_WORTH_SNAPSHOT);
+    const row = new Array(sh.getLastColumn()).fill('');
+    const fields = {
+      Id: Utilities.getUuid(), RecordedAt: now, Date: day,
+      TotalAssets: nw.totalAssets, TotalDebts: nw.totalDebts,
+      NetWorth: nw.netWorth, LiquidAssets: nw.liquidAssets,
+      InvestmentAssets: nw.investmentAssets, WalletTotal: walletTotal,
+      Notes: notes
+    };
+    Object.keys(fields).forEach(name => { row[colIndex_(sh, name)] = fields[name]; });
+    sh.appendRow(row);
+    invalidateCache_();
+    return { success: true, id: fields.Id, date: day,
+      msg: 'Kekayaan bersih hari ini tercatat dalam riwayat.' };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════
