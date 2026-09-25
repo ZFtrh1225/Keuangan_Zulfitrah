@@ -397,6 +397,21 @@ html[data-theme="light"] .summary-card {
 .sub-stat-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 
 /* ──────────────── 5. WALLET ──────────────── */
+.priority-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 275px), 1fr)); gap: 12px; }
+.priority-card { border-left: 3px solid var(--amber); min-width: 0; }
+.priority-card.budget { border-left-color: var(--red); }
+.priority-card.goal { border-left-color: var(--indigo); }
+.priority-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.priority-kind { font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--amber); }
+.priority-card.budget .priority-kind { color: var(--red); }
+.priority-card.goal .priority-kind { color: var(--indigo); }
+.priority-rank { font-size: 11px; color: var(--t3); }
+.priority-title { color: var(--t1); font-size: 16px; line-height: 1.4; margin: 10px 0; overflow-wrap: anywhere; }
+.priority-detail { color: var(--t2); font-size: 13px; line-height: 1.6; }
+.priority-why { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; color: var(--t2); font-size: 12px; line-height: 1.6; }
+.priority-why summary { color: var(--accent); cursor: pointer; font-weight: 700; }
+.priority-why p { margin: 8px 0 0; }
+.priority-empty { color: var(--t2); font-size: 13px; grid-column: 1 / -1; }
 .wallet-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));

@@ -30,7 +30,13 @@
   const state = MT.state;
   const charts = MT.charts;
   const scenarios = MT.scenarios;
+  const actionPriorities = MT.actionPriorities;
   let goalLoadSeq = 0;
+  let prioritiesDashboardFresh = false;
+  let prioritiesDashboardError = '';
+  let prioritiesGoalsFresh = false;
+  let prioritiesGoalsReady = false;
+  let prioritiesDashboardPeriod = null;
   let scenarioTouched = false;
   let scenarioBaseline = null;
 
@@ -249,6 +255,7 @@
   }
 
   async function refresh() {
+    prioritiesDashboardFresh = false;
     const cached = store.getCachedDashboard(state.currentMonth, state.currentYear);
     if (cached && cached.data) {
       store.setDashboard(cached.data);
@@ -486,21 +493,34 @@
   // ────────────────────────────────────────────────────────────────
   async function loadDashboard() {
     state.isLoading = true;
+    prioritiesDashboardFresh = false;
+    prioritiesDashboardError = '';
+    renderActionPriorities();
     if (!state.dashboard) showLoading(true);
-    const res = await api.getDashboardData(state.currentMonth, state.currentYear);
+    const requestMonth = state.currentMonth, requestYear = state.currentYear;
+    const res = await api.getDashboardData(requestMonth, requestYear);
     showLoading(false);
     state.isLoading = false;
     if (!res.success) {
       showToast('Gagal memuat data: ' + (res.error || 'unknown'), 'error');
+      prioritiesDashboardError = 'Data dashboard terbaru belum tersedia. Coba muat ulang.';
+      renderActionPriorities();
       return;
     }
+    if (requestMonth !== state.currentMonth || requestYear !== state.currentYear) return;
     store.setDashboard(res);
     store.setCachedDashboard(state.currentMonth, state.currentYear, res);
     renderAll(res);
+    prioritiesDashboardPeriod = { month: requestMonth, year: requestYear };
+    prioritiesDashboardFresh = true;
+    renderActionPriorities();
   }
 
   async function loadGoals() {
     const seq = ++goalLoadSeq;
+    prioritiesGoalsFresh = false;
+    prioritiesGoalsReady = false;
+    renderActionPriorities();
     // optimistic from cache
     const cached = store.getCachedGoals();
     if (cached && cached.length) {
@@ -516,7 +536,10 @@
       renderGoals(res.goals || []);
       renderGoalOptions();
       renderScenarioGoalOptions();
+      prioritiesGoalsFresh = true;
     }
+    prioritiesGoalsReady = true;
+    renderActionPriorities();
   }
 
   function renderGoalOptions() {
@@ -585,6 +608,69 @@
     renderStreak(d.streak || null);
     renderCalendar(d.calendar || null);
     renderEnvelopeBudgets(d.categoryBudgets || []);
+    renderActionPriorities();
+  }
+
+  function renderActionPriorities() {
+    const el = $('actionPriorityList');
+    if (!el) return;
+    const now = new Date();
+    if (!prioritiesDashboardFresh || !prioritiesDashboardPeriod ||
+        prioritiesDashboardPeriod.month !== state.currentMonth || prioritiesDashboardPeriod.year !== state.currentYear) {
+      el.innerHTML = `<div class="card priority-empty">${prioritiesDashboardError || 'Menunggu data dashboard terbaru…'}</div>`;
+      return;
+    }
+    if (state.currentMonth !== now.getMonth() + 1 || state.currentYear !== now.getFullYear()) {
+      el.innerHTML = '<div class="card priority-empty">Prioritas harian hanya tersedia untuk bulan berjalan. Pilih bulan ini untuk melihatnya.</div>';
+      return;
+    }
+    // Tunggu daftar tujuan segar agar peringkat tidak berubah karena cache lama.
+    if (!prioritiesGoalsReady) {
+      el.innerHTML = '<div class="card priority-empty">Menunggu data tujuan terbaru…</div>';
+      return;
+    }
+    const goals = (prioritiesGoalsFresh ? state.goals || [] : []).map(g => ({ ...g,
+      effectiveTarget: MT.inflation ? MT.inflation.effectiveGoalTarget(g).effectiveTarget : g.target
+    }));
+    const items = actionPriorities.prioritize({ dashboard: state.dashboard, goals,
+      month: state.currentMonth, year: state.currentYear, now });
+    if (!items.length) {
+      el.innerHTML = `<div class="card priority-empty">${prioritiesGoalsFresh
+        ? 'Belum ada tagihan dalam 7 hari, anggaran terpakai ≥90%, atau tujuan di bawah jadwal berdasarkan data terbaru.'
+        : 'Belum ada tagihan dekat atau anggaran hampir habis. Data tujuan gagal dimuat; coba refresh.'}</div>`;
+      return;
+    }
+    const dateLabel = iso => new Date(iso + 'T12:00:00Z').toLocaleDateString('id-ID',
+      { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+    el.innerHTML = (prioritiesGoalsFresh ? '' : '<div class="card priority-empty">Data tujuan belum tersedia; daftar ini hanya memakai tagihan dan anggaran terbaru.</div>') + items.map((a, i) => {
+      let kind, detail, why;
+      if (a.type === 'bill') {
+        kind = '📅 TAGIHAN';
+        const source = a.wallet && Object.prototype.hasOwnProperty.call(state.dashboard.walletBalances || {}, a.wallet)
+          ? `Dompet pembayaran sebelumnya: ${escapeHtml(a.wallet)} · saldo ${fmtRp(state.dashboard.walletBalances[a.wallet])}. Cek sebelum membayar.`
+          : 'Dompet pembayaran belum tercatat. Pilih dan cek saldo dompet yang akan digunakan.';
+        detail = `${a.predicted ? 'Perkiraan ' : ''}jatuh tempo ${dateLabel(a.date)} · ${fmtRp(a.amount)}<br>${source}`;
+        why = a.predicted
+          ? `Pola transaksi sebelumnya menunjukkan perkiraan ${a.daysLeft} hari lagi. Rata-rata nominal ${fmtRp(a.amount)} dari ${a.occurrences || 'beberapa'} bulan tercatat. Tanggal dan nominal bisa berbeda dari tagihan sebenarnya.`
+          : `Tagihan manual dijadwalkan ${a.daysLeft} hari lagi pada ${dateLabel(a.date)}, nominal ${fmtRp(a.amount)}. Status pembayarannya belum tercatat di daftar tagihan; periksa sebelum membayar lagi.`;
+      } else if (a.type === 'budget') {
+        kind = '📊 ANGGARAN';
+        detail = `${a.remaining < 0 ? 'Melebihi plafon ' + fmtRp(-a.remaining) : 'Sisa ' + fmtRp(a.remaining)} · ${a.daysRemaining} hari termasuk hari ini`;
+        why = `Plafon ${fmtRp(a.budget)} dikurangi pengeluaran ${fmtRp(a.spent)} = ${fmtRp(a.remaining)} (${(a.ratio * 100).toFixed(0)}% terpakai). Sisa ${a.daysRemaining} hari sampai akhir bulan.`;
+      } else {
+        kind = '🎯 TUJUAN';
+        detail = `Kurang dari jadwal ${fmtRp(a.gap)} · ${a.daysLeft === 0
+          ? 'tenggat hari ini, sisa ' + fmtRp(a.target - a.saved)
+          : 'perlu sekitar ' + fmtRp(a.monthlyNeeded) + ' per 30 hari hingga ' + dateLabel(a.deadline)}`;
+        why = `${a.inflationAdjusted ? 'Target setelah penyesuaian inflasi' : 'Target'} ${fmtRp(a.target)}; terkumpul ${fmtRp(a.saved)}. Jadwal rata sejak tujuan dibuat memerlukan ${fmtRp(a.expected)} pada hari ini. Selisih ${fmtRp(a.gap)}; sisa target ${fmtRp(a.target - a.saved)} dengan ${a.daysLeft} hari hingga tenggat.${a.daysLeft > 0 ? ' Kebutuhan setara 30 hari = sisa target × 30 ÷ sisa hari, dibulatkan ke atas.' : ' Tidak ada waktu tersisa untuk menghitung setoran bulanan.'} Ini bukan perbandingan dengan setoran bulan lalu.`;
+      }
+      return `<article class="card priority-card ${a.type}">
+        <div class="priority-head"><span class="priority-kind">${kind}</span><span class="priority-rank">Prioritas ${i + 1}</span></div>
+        <h3 class="priority-title">${escapeHtml(a.title)}</h3>
+        <div class="priority-detail">${detail}</div>
+        <details class="priority-why"><summary>Kenapa disarankan?</summary><p>${why}</p></details>
+      </article>`;
+    }).join('');
   }
 
   // ── Summary ──
