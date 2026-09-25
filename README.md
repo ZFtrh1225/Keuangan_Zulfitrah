@@ -220,3 +220,31 @@ tagihan dan mengembalikan pengaruh transaksi pada saldo dan laporan. Tagihan
 yang memiliki pembayaran tertaut tidak dapat dibatalkan status lunasnya atau
 dihapus sebelum transaksi pembayaran dihapus. Tombol **Tandai lunas** tetap
 tersedia untuk mencatat status saja tanpa membuat transaksi.
+
+## 💳 Pembayaran Kewajiban dan Tujuan Simulasi
+
+Salin `Code.gs` dari pembaruan ini ke proyek Apps Script aktif dan terbitkan
+**New version** sebelum menggabungkan perubahan frontend. Migrasi menambah
+`Id` di `Debts`, serta `DebtId` dan `PrincipalPaid` di akhir `Expenses`.
+Data lama dipertahankan. URL deployment aktif di `js/api.js` tidak diganti.
+
+Dropdown **Tujuan Keuangan (Opsional)** di simulasi menampilkan tujuan yang
+sudah dibuat pada bagian **Tujuan Keuangan**. Jika belum ada tujuan, hanya
+**Tanpa tujuan** yang tampil. Tombol **+ Buat Tujuan** tersedia di dekat dropdown.
+
+Pengeluaran pada kategori **Kewajiban & Utang** tetap mengurangi dompet seperti
+biasa. Untuk mengurangi **Daftar Kewajiban**, pilih kewajiban terkait dan isi
+bagian pembayaran yang mengurangi pokok berdasarkan tagihan resmi. Jika
+pengeluaran sudah dicatat, buka **Riwayat Transaksi**, pilih transaksi tadi,
+lalu tautkan dan simpan; **jangan membuat pengeluaran kedua**. Saldo kewajiban
+yang ditampilkan adalah saldo awal dikurangi total pokok pembayaran tertaut.
+Mengubah atau menghapus transaksi otomatis menghitung ulang saldo, dan Debt
+Payoff memakai saldo terbaru. Bunga/biaya tetap tercatat sebagai pengeluaran,
+tetapi tidak mengurangi pokok. Tidak ada riwayat lama yang otomatis dianggap
+sebagai pembayaran hanya karena nama kategori cocok.
+
+Saat menambah atau mengedit kewajiban, isi **cicilan minimum bulanan** dan
+**bunga tahunan** agar Debt Payoff bisa mensimulasikan Snowball dan Avalanche.
+Kalkulator ini hanya memproyeksikan jadwal, tidak membuat transaksi pembayaran.
+FIRE Projection juga hanya simulasi berdasarkan asumsi pengeluaran, kontribusi,
+modal, hasil investasi, inflasi, dan tingkat penarikan; tidak mencatat investasi.

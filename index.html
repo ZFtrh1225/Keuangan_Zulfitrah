@@ -545,6 +545,8 @@
           <div class="form-group">
             <label class="form-label" for="scGoal">Tujuan keuangan (opsional)</label>
             <select class="form-input" id="scGoal"><option value="">Tanpa tujuan</option></select>
+            <div class="muted micro-label" id="scGoalHint" role="status">Tujuan yang dibuat akan muncul di sini.</div>
+            <button type="button" class="btn-pill" id="btnScenarioGoalCreate">+ Buat Tujuan</button>
           </div>
           <div class="form-group">
             <label class="form-label" for="scGoalMonthly">Rencana setoran tujuan per bulan (Rp)</label>
@@ -784,6 +786,14 @@
               <input type="text" class="form-input" id="expNotes" placeholder="Deskripsi transaksi…" />
             </div>
           </div>
+          <div class="form-row mb-14" id="expDebtLinkWrap" hidden>
+            <div class="form-group"><label class="form-label" for="expDebtId">Kewajiban terkait (opsional)</label>
+              <select class="form-input" id="expDebtId"><option value="">Tidak ditautkan</option></select></div>
+            <div class="form-group"><label class="form-label" for="expPrincipalPaid">Bagian yang mengurangi pokok (Rp)</label>
+              <div class="amount-input-wrap"><span class="amount-prefix">Rp</span>
+                <input type="text" inputmode="numeric" class="form-input currency-mask" id="expPrincipalPaid" placeholder="0" /></div></div>
+            <div class="muted micro-label">Isi pokok saja; bunga dan biaya tetap tercatat dalam pengeluaran, tetapi tidak mengurangi sisa utang.</div>
+          </div>
           <div class="form-group mb-20">
             <div class="form-label">Sumber Dana</div>
             <div class="source-pills" id="expSourcePills">
@@ -908,6 +918,8 @@
         </div>
 
         <div class="tab-content" id="tab-debt" role="tabpanel">
+          <input type="hidden" id="debtEditRowIndex" />
+          <input type="hidden" id="debtEditId" />
           <div class="form-row">
             <div class="form-group">
               <label class="form-label" for="debtType">Jenis Hutang</label>
@@ -925,7 +937,7 @@
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label" for="debtValue">Sisa Hutang</label>
+              <label class="form-label" for="debtValue">Saldo awal / pokok yang dicatat</label>
               <div class="amount-input-wrap">
                 <span class="amount-prefix">Rp</span>
                 <input type="text" inputmode="numeric" class="form-input currency-mask" id="debtValue" placeholder="0" />
@@ -936,6 +948,14 @@
               <input type="text" class="form-input" id="debtInst" placeholder="Nama bank/platform" />
             </div>
           </div>
+          <div class="form-row mb-14">
+            <div class="form-group"><label class="form-label" for="debtMinPayment">Cicilan minimum per bulan (Rp)</label>
+              <div class="amount-input-wrap"><span class="amount-prefix">Rp</span>
+                <input type="text" inputmode="numeric" class="form-input currency-mask" id="debtMinPayment" placeholder="0" /></div></div>
+            <div class="form-group"><label class="form-label" for="debtInterestRate">Bunga efektif per tahun (%)</label>
+              <input type="number" min="0" step="0.01" class="form-input" id="debtInterestRate" placeholder="0" /></div>
+          </div>
+          <p class="muted micro-label">Sisa kewajiban = saldo awal − pokok pembayaran tertaut. Untuk simulasi Debt Payoff, isi cicilan minimum dan bunga tahunan sesuai tagihan.</p>
           <button class="btn-submit btn-danger" id="btnSubmitDebt">Simpan Kewajiban 📝</button>
         </div>
       </div>
@@ -1251,6 +1271,7 @@
         <input type="hidden" id="editKind" />
         <input type="hidden" id="editRowIndex" />
         <input type="hidden" id="editBillId" />
+        <input type="hidden" id="editDebtId" />
         <div id="editFields"></div>
         <div class="modal-actions">
           <button class="btn btn-danger" id="btnDeleteTx">🗑️ Hapus</button>

@@ -1056,6 +1056,7 @@ html[data-theme="light"] .summary-card {
 
 /* ──────────────── 16. FORMS ──────────────── */
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+#expDebtLinkWrap[hidden] { display: none; }
 .form-row.single { grid-template-columns: 1fr; }
 .form-row.three { grid-template-columns: repeat(3, 1fr); }
 .form-group { display: flex; flex-direction: column; gap: 6px; }

@@ -194,8 +194,8 @@ function handleAction_(e) {
       case 'saveSettings':           return saveSettings(data);
       case 'saveAppSecret':          return saveAppSecret(data);
       // ── Delete ──
-      case 'deleteTransaction':      return deleteTransaction(data.sheet, data.rowIndex, data.billId);
-      case 'deleteWealthItem':       return deleteWealthItem(data.type, data.rowIndex);
+      case 'deleteTransaction':      return deleteTransaction(data.sheet, data.rowIndex, data.billId, data.debtId);
+      case 'deleteWealthItem':       return deleteWealthItem(data.type, data.rowIndex, data.id);
       case 'deleteGoal':             return deleteGoal(data.rowIndex);
       case 'deleteTemplate':         return deleteTemplate(data.rowIndex);
       case 'deleteBill':             return deleteBill(data.rowIndex, data.id);
@@ -225,7 +225,7 @@ function initSheets_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const cfg = [
     { name: SHEET_NAMES.INCOME,  headers: ['Date', 'Type', 'Amount', 'Notes', 'Source'] },
-    { name: SHEET_NAMES.EXPENSE, headers: ['Date', 'Category', 'Subcategory', 'Amount', 'Notes', 'Source', 'BillId'] },
+    { name: SHEET_NAMES.EXPENSE, headers: ['Date', 'Category', 'Subcategory', 'Amount', 'Notes', 'Source', 'BillId', 'DebtId', 'PrincipalPaid'] },
     // Destination is appended so existing rows keep their original layout.
     // A blank Destination marks a legacy saving whose origin is unknown.
     { name: SHEET_NAMES.SAVING,  headers: ['Date', 'Type', 'Amount', 'Notes', 'Source', 'Destination', 'GoalId'] },
@@ -233,7 +233,7 @@ function initSheets_() {
     // Debt: kolom MinPayment + InterestRate ditambahkan untuk perhitungan
     // DSR yang riil & debt-payoff calculator. Sheet lama (5 kolom) akan
     // di-migrasi otomatis di blok schema-migration di bawah.
-    { name: SHEET_NAMES.DEBT,    headers: ['Date', 'Type', 'Name', 'Value', 'Institution', 'MinPayment', 'InterestRate'] },
+    { name: SHEET_NAMES.DEBT,    headers: ['Date', 'Type', 'Name', 'Value', 'Institution', 'MinPayment', 'InterestRate', 'Id'] },
     // InflationSensitive/InflationRate: untuk goal yang targetnya adalah
     // harga barang/jasa masa depan (DP rumah, biaya kuliah) yang ikut naik
     // seiring inflasi — beda dengan goal nominal tetap (dana darurat).
@@ -320,6 +320,23 @@ function initSheets_() {
       }
     }
   }
+  // Existing debts need stable IDs before an expense can refer to them.
+  const debts = ss.getSheetByName(SHEET_NAMES.DEBT);
+  if (debts.getLastRow() > 1) {
+    const idColumn = colIndex_(debts, 'Id') + 1;
+    const cells = debts.getRange(2, idColumn, debts.getLastRow() - 1, 1);
+    if (cells.getValues().some(r => !r[0])) {
+      const lock = LockService.getScriptLock();
+      if (!lock.tryLock(10000)) throw new Error('Sistem sedang sibuk, coba lagi sebentar.');
+      try {
+        const ids = cells.getValues();
+        if (ids.some(r => !r[0])) {
+          ids.forEach(r => { if (!r[0]) r[0] = Utilities.getUuid(); });
+          cells.setValues(ids);
+        }
+      } finally { lock.releaseLock(); }
+    }
+  }
 }
 
 /**
@@ -354,11 +371,60 @@ function addExpense(data) {
   if (!cat || cat.toLowerCase() === 'undefined' || cat.toLowerCase() === 'null') {
     return { success: false, error: 'Kategori wajib diisi.' };
   }
-  SpreadsheetApp.getActiveSpreadsheet()
-    .getSheetByName(SHEET_NAMES.EXPENSE)
-    .appendRow([data.date, cat, data.subcategory || '', Number(data.amount), data.notes || '', data.source]);
-  invalidateCache_();
-  return { success: true, msg: 'Pengeluaran berhasil dicatat! ✅' };
+  const save = () => {
+    const link = validateDebtPayment_(data.debtId, data.principalPaid, data.amount, cat);
+    if (link.error) return { success: false, error: link.error };
+    const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.EXPENSE);
+    const row = new Array(sh.getLastColumn()).fill('');
+    row[0] = data.date; row[1] = cat; row[2] = data.subcategory || '';
+    row[3] = Number(data.amount); row[4] = data.notes || ''; row[5] = data.source;
+    row[colIndex_(sh, 'DebtId')] = link.id;
+    row[colIndex_(sh, 'PrincipalPaid')] = link.principal;
+    sh.appendRow(row);
+    invalidateCache_();
+    return { success: true, msg: 'Pengeluaran berhasil dicatat! ✅' };
+  };
+  if (!data.debtId) return save();
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) throw new Error('Sistem sedang sibuk, coba lagi sebentar.');
+  try { return save(); } finally { lock.releaseLock(); }
+}
+
+function debtPrincipalTotals_(expenses) {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.EXPENSE);
+  const idIdx = colIndex_(sh, 'DebtId');
+  const principalIdx = colIndex_(sh, 'PrincipalPaid');
+  const totals = Object.create(null);
+  (expenses || getSheetData_(SHEET_NAMES.EXPENSE)).forEach(r => {
+    const id = String(r[idIdx] || '').trim();
+    if (id) totals[id] = (totals[id] || 0) + (Number(r[principalIdx]) || 0);
+  });
+  return totals;
+}
+
+function validateDebtPayment_(debtId, principalPaid, expenseAmount, category, excludeExpenseRow) {
+  const id = String(debtId || '').trim();
+  if (!id) {
+    if (principalPaid !== undefined && principalPaid !== '' && Number(principalPaid) !== 0)
+      return { error: 'Pilih kewajiban untuk pembayaran pokok.' };
+    return { id: '', principal: '' };
+  }
+  const amount = Number(expenseAmount);
+  const principal = Number(principalPaid);
+  if (category !== 'Kewajiban & Utang' || !Number.isFinite(amount) || amount <= 0 ||
+      !Number.isFinite(principal) || principal <= 0 || principal > amount ||
+      !Number.isSafeInteger(principal))
+    return { error: 'Pokok pembayaran harus lebih dari 0 dan tidak melebihi jumlah pengeluaran.' };
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.DEBT);
+  const debt = getSheetData_(SHEET_NAMES.DEBT)
+    .find(r => String(r[colIndex_(sh, 'Id')]) === id);
+  if (!debt) return { error: 'Kewajiban tidak ditemukan. Muat ulang data.' };
+  const expenseRows = getSheetDataWithRowIndex_(SHEET_NAMES.EXPENSE)
+    .filter(item => item.rowIndex !== excludeExpenseRow).map(item => item.row);
+  const paid = debtPrincipalTotals_(expenseRows)[id] || 0;
+  if (principal > (Number(debt[3]) || 0) - paid)
+    return { error: 'Pokok pembayaran melebihi sisa kewajiban. Periksa saldo awal dan pembayaran tertaut.' };
+  return { id, principal };
 }
 
 function addSaving(data) {
@@ -410,17 +476,15 @@ function addAsset(data) {
 function addDebt(data) {
   initSheets_();
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.DEBT);
-  // Tulis ke 7 kolom: Date, Type, Name, Value, Institution, MinPayment, InterestRate.
-  // Sheet lama yang baru di-migrate juga sudah punya 7 kolom setelah initSheets_().
-  sh.appendRow([
-    new Date(),
-    data.type,
-    data.name,
-    Number(data.value),
-    data.inst,
-    Number(data.minPayment) || 0,
-    Number(data.interestRate) || 0
-  ]);
+  const amount = Number(data.value), minimum = Number(data.minPayment || 0), rate = Number(data.interestRate || 0);
+  if (!String(data.name || '').trim() || !Number.isFinite(amount) || amount <= 0 ||
+      !Number.isFinite(minimum) || minimum < 0 || !Number.isFinite(rate) || rate < 0)
+    return { success: false, error: 'Nama, nilai kewajiban, cicilan minimum, atau bunga tidak valid.' };
+  const row = new Array(sh.getLastColumn()).fill('');
+  row[0] = new Date(); row[1] = data.type; row[2] = String(data.name).trim();
+  row[3] = amount; row[4] = data.inst || ''; row[5] = minimum; row[6] = rate;
+  row[colIndex_(sh, 'Id')] = Utilities.getUuid();
+  sh.appendRow(row);
   invalidateCache_();
   return { success: true, msg: 'Kewajiban berhasil dicatat! 📝' };
 }
@@ -430,10 +494,18 @@ function addDebt(data) {
  */
 function updateDebt(data) {
   initSheets_();
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) throw new Error('Sistem sedang sibuk, coba lagi sebentar.');
+  try { return updateDebtLocked_(data); } finally { lock.releaseLock(); }
+}
+
+function updateDebtLocked_(data) {
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.DEBT);
   if (!sh) throw new Error('Sheet Debts tidak ditemukan');
   const row = parseInt(data.rowIndex, 10);
-  if (!row || row < 2) throw new Error('Index baris tidak valid');
+  if (!row || row < 2 || row > sh.getLastRow() ||
+      data.id && String(sh.getRange(row, colIndex_(sh, 'Id') + 1).getValue()) !== String(data.id))
+    return { success: false, error: 'Kewajiban berubah. Muat ulang data.' };
 
   const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
   const fields = {
@@ -444,6 +516,14 @@ function updateDebt(data) {
     MinPayment: data.minPayment != null ? Number(data.minPayment) : undefined,
     InterestRate: data.interestRate != null ? Number(data.interestRate) : undefined
   };
+  if (fields.Name !== undefined && !String(fields.Name || '').trim())
+    return { success: false, error: 'Nama kewajiban wajib diisi.' };
+  if (fields.Value !== undefined && (!Number.isFinite(fields.Value) || fields.Value <= 0 ||
+      fields.Value < (debtPrincipalTotals_()[String(sh.getRange(row, colIndex_(sh, 'Id') + 1).getValue())] || 0)))
+    return { success: false, error: 'Saldo awal harus melebihi total pokok pembayaran tertaut.' };
+  if (fields.MinPayment !== undefined && (!Number.isFinite(fields.MinPayment) || fields.MinPayment < 0) ||
+      fields.InterestRate !== undefined && (!Number.isFinite(fields.InterestRate) || fields.InterestRate < 0))
+    return { success: false, error: 'Cicilan minimum dan bunga tidak boleh negatif.' };
   Object.keys(fields).forEach(k => {
     if (fields[k] === undefined) return;
     const idx = headers.indexOf(k);
@@ -469,10 +549,21 @@ function editTransaction(data) {
   const save = () => {
     const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
     const f = data.fields || {};
+    let debtLink = null;
     if (data.sheet === 'expense') {
-      const billId = String(sh.getRange(row, headers.indexOf('BillId') + 1).getValue() || '');
+      const old = sh.getRange(row, 1, 1, sh.getLastColumn()).getValues()[0];
+      const billId = String(old[headers.indexOf('BillId')] || '');
       if ((billId || data.billId) && billId !== String(data.billId || ''))
         return { success: false, error: 'Transaksi tagihan berubah. Muat ulang daftar transaksi.' };
+      const oldDebtId = String(old[headers.indexOf('DebtId')] || '');
+      if ((oldDebtId || data.expectedDebtId) && oldDebtId !== String(data.expectedDebtId || ''))
+        return { success: false, error: 'Tautan kewajiban berubah. Muat ulang daftar transaksi.' };
+      const nextDebtId = f.debtId !== undefined ? f.debtId : oldDebtId;
+      const nextPrincipal = f.principalPaid !== undefined ? f.principalPaid : old[headers.indexOf('PrincipalPaid')];
+      debtLink = validateDebtPayment_(nextDebtId, nextPrincipal,
+        f.amount !== undefined ? f.amount : old[3],
+        f.category !== undefined ? f.category : old[1], row);
+      if (debtLink.error) return { success: false, error: debtLink.error };
       if (billId && (f.date !== undefined && !validBillDate_(String(f.date)) ||
           f.amount !== undefined && (!Number.isFinite(Number(f.amount)) || Number(f.amount) <= 0) ||
           f.category !== undefined && !CATEGORIES.some(c => c.name === String(f.category).trim()) ||
@@ -515,6 +606,10 @@ function editTransaction(data) {
       if (k === 'amount') val = Number(val);
       sh.getRange(row, idx + 1).setValue(val);
     });
+    if (data.sheet === 'expense' && (f.debtId !== undefined || f.principalPaid !== undefined)) {
+      sh.getRange(row, headers.indexOf('DebtId') + 1).setValue(debtLink.id);
+      sh.getRange(row, headers.indexOf('PrincipalPaid') + 1).setValue(debtLink.principal);
+    }
     if (data.sheet === 'expense' && f.source !== undefined && data.billId) {
       const billSh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.BILL);
       const bill = getSheetDataWithRowIndex_(SHEET_NAMES.BILL).find(item =>
@@ -534,7 +629,7 @@ function editTransaction(data) {
  * Delete single transaction row.
  * sheet: 'income' | 'expense' | 'saving'
  */
-function deleteTransaction(sheet, rowIndex, expectedBillId) {
+function deleteTransaction(sheet, rowIndex, expectedBillId, expectedDebtId) {
   if (sheet === 'expense') initSheets_();
   const sheetName = sheetForKind_(sheet);
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
@@ -546,6 +641,9 @@ function deleteTransaction(sheet, rowIndex, expectedBillId) {
       const billId = String(sh.getRange(row, colIndex_(sh, 'BillId') + 1).getValue() || '');
       if ((billId || expectedBillId) && billId !== String(expectedBillId || ''))
         return { success: false, error: 'Transaksi tagihan berubah. Muat ulang daftar transaksi.' };
+      const debtId = String(sh.getRange(row, colIndex_(sh, 'DebtId') + 1).getValue() || '');
+      if ((debtId || expectedDebtId) && debtId !== String(expectedDebtId || ''))
+        return { success: false, error: 'Tautan kewajiban berubah. Muat ulang daftar transaksi.' };
       if (billId) {
         const billSh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.BILL);
         const bill = getSheetDataWithRowIndex_(SHEET_NAMES.BILL).find(item =>
@@ -573,7 +671,29 @@ function sheetForKind_(kind) {
   return m[String(kind).toLowerCase()];
 }
 
-function deleteWealthItem(type, rowIndex) {
+function deleteWealthItem(type, rowIndex, debtId) {
+  if (type === 'debt') {
+    initSheets_();
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(10000)) throw new Error('Sistem sedang sibuk, coba lagi sebentar.');
+    try {
+      const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.DEBT);
+      let row = parseInt(rowIndex, 10);
+      if (debtId) {
+        const found = getSheetDataWithRowIndex_(SHEET_NAMES.DEBT).find(item =>
+          String(item.row[colIndex_(sh, 'Id')]) === String(debtId));
+        row = found ? found.rowIndex : 0;
+      }
+      if (!row || row < 2 || row > sh.getLastRow())
+        return { success: false, error: 'Kewajiban tidak ditemukan. Muat ulang data.' };
+      const id = String(sh.getRange(row, colIndex_(sh, 'Id') + 1).getValue() || '');
+      if (id && debtPrincipalTotals_()[id])
+        return { success: false, error: 'Lepas tautan pembayaran melalui riwayat pengeluaran sebelum menghapus kewajiban.' };
+      sh.deleteRow(row);
+      invalidateCache_();
+      return { success: true, msg: 'Kewajiban dihapus 🗑️' };
+    } finally { lock.releaseLock(); }
+  }
   const sheetName = type === 'asset' ? SHEET_NAMES.ASSET : SHEET_NAMES.DEBT;
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
   if (!sh) throw new Error('Sheet tidak ditemukan');
@@ -1427,24 +1547,32 @@ function getDashboardData(month, year, options) {
 
   let debtDetails = [];
   let totalDebts = 0;
+  const debtSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.DEBT);
+  const principalTotals = debtPrincipalTotals_(allExp);
   // Sum minimum-payment dari semua hutang (untuk DSR yang riil).
   let totalMinPayment = 0;
   allDebts.forEach((r, i) => {
     if (!r[0]) return;
-    const val = parseFloat(r[3]) || 0;
+    const openingValue = parseFloat(r[3]) || 0;
+    const id = String(r[colIndex_(debtSheet, 'Id')] || '');
+    const principalPaid = principalTotals[id] || 0;
+    const val = Math.max(0, openingValue - principalPaid);
     const minP = parseFloat(r[5]) || 0;       // kolom MinPayment (idx 5)
     const ir = parseFloat(r[6]) || 0;         // kolom InterestRate (idx 6, % per tahun)
     debtDetails.push({
       rowIndex: i + 2,
+      id: id,
       type: r[1] || '-',
       name: r[2] || '-',
       value: val,
+      openingValue: openingValue,
+      principalPaid: principalPaid,
       inst: r[4] || '-',
       minPayment: minP,
       interestRate: ir
     });
     totalDebts += val;
-    totalMinPayment += minP;
+    if (val > 0) totalMinPayment += minP;
   });
 
   // ── Wallet Balances (with opening balance + transfers) ──
@@ -1965,6 +2093,8 @@ function listRecentTransactions(month, year, limit) {
   const savingsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.SAVING);
   const expenseSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.EXPENSE);
   const billIdIdx = colIndex_(expenseSheet, 'BillId');
+  const debtIdIdx = colIndex_(expenseSheet, 'DebtId');
+  const principalIdx = colIndex_(expenseSheet, 'PrincipalPaid');
   const destinationIdx = colIndex_(savingsSheet, 'Destination');
   const goalIdIdx = colIndex_(savingsSheet, 'GoalId');
 
@@ -2003,7 +2133,9 @@ function listRecentTransactions(month, year, limit) {
       amount: parseFloat(row[3]) || 0,
       notes: row[4] || '',
       source: row[5] || '',
-      billId: row[billIdIdx] || ''
+      billId: row[billIdIdx] || '',
+      debtId: row[debtIdIdx] || '',
+      principalPaid: Number(row[principalIdx]) || 0
     });
   });
 
@@ -2701,10 +2833,12 @@ function saveAppSecret(data) {
 function calculateDebtPayoff(data) {
   initSheets_();
   const allDebts = getSheetData_(SHEET_NAMES.DEBT);
+  const debtSh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.DEBT);
+  const totals = debtPrincipalTotals_();
   const debts = allDebts.map((r, i) => ({
     rowIndex: i + 2,
     name: r[2] || ('Hutang ' + (i + 1)),
-    balance: parseFloat(r[3]) || 0,
+    balance: Math.max(0, (parseFloat(r[3]) || 0) - (totals[String(r[colIndex_(debtSh, 'Id')] || '')] || 0)),
     minPayment: parseFloat(r[5]) || 0,
     interestRate: (parseFloat(r[6]) || 0) / 100 // % → decimal
   })).filter(d => d.balance > 0 && d.minPayment > 0);
