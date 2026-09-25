@@ -21,7 +21,8 @@ const SHEET_NAMES = {
   TEMPLATE: 'Templates',
   BILL: 'Bills',
   WALLET: 'Wallets',     // Daftar dompet + saldo awal (opening balance)
-  TRANSFER: 'Transfers'  // Transfer antar dompet
+  TRANSFER: 'Transfers', // Transfer antar dompet
+  RECONCILIATION: 'WalletReconciliations' // Pemeriksaan saldo dan koreksi yang dapat diaudit
 };
 
 // ─── Auth: shared-secret antara frontend & backend ──────────────────
@@ -162,6 +163,7 @@ function handleAction_(e) {
       case 'listTemplates':          return listTemplates();
       case 'listBills':              return listBills(data.month, data.year);
       case 'listWallets':            return listWallets();
+      case 'listWalletReconciliations': return listWalletReconciliations();
       case 'listTransfers':          return listTransfers(data.month, data.year);
       case 'getAuthStatus':          return getAuthStatus();
       case 'getLifestyleCreepAnalysis': return getLifestyleCreepAnalysis();
@@ -176,6 +178,8 @@ function handleAction_(e) {
       case 'addTemplate':            return addTemplate(data);
       case 'addBill':                return addBill(data);
       case 'addWallet':              return addWallet(data);
+      case 'recordWalletReconciliation': return recordWalletReconciliation(data);
+      case 'applyWalletAdjustment':  return applyWalletAdjustment(data);
       case 'addTransfer':            return addTransfer(data);
       // ── Update ──
       case 'editTransaction':        return editTransaction(data);
@@ -239,7 +243,8 @@ function initSheets_() {
     // Wallets: opening balance + metadata per dompet (BRI, Cash, dll)
     { name: SHEET_NAMES.WALLET,  headers: ['Name', 'OpeningBalance', 'OpeningDate', 'Type', 'Notes', 'CreatedAt'] },
     // Transfers antar dompet (tidak menambah/mengurangi total kekayaan)
-    { name: SHEET_NAMES.TRANSFER, headers: ['Date', 'FromWallet', 'ToWallet', 'Amount', 'Fee', 'Notes'] }
+    { name: SHEET_NAMES.TRANSFER, headers: ['Date', 'FromWallet', 'ToWallet', 'Amount', 'Fee', 'Notes'] },
+    { name: SHEET_NAMES.RECONCILIATION, headers: ['Id', 'CheckedAt', 'Wallet', 'BookBalance', 'ActualBalance', 'Difference', 'Notes', 'AppliedAt', 'AppliedAmount'] }
   ];
   cfg.forEach(c => {
     let sh = ss.getSheetByName(c.name);
@@ -1232,54 +1237,8 @@ function getDashboardData(month, year) {
   // ── Wallet Balances (with opening balance + transfers) ──
   // Source of truth untuk dompet: opening balance dari sheet Wallets +
   // semua transaksi (income/expense/saving) + transfer in/out.
-  const walletConfigs = getSheetData_(SHEET_NAMES.WALLET);
-  const walletMeta = {};      // name → { opening, type, notes }
-  const walletBalances = {};
-  walletConfigs.forEach(r => {
-    const name = (r[0] || '').toString().trim();
-    if (!name) return;
-    const opening = parseFloat(r[1]) || 0;
-    walletMeta[name] = {
-      opening: opening,
-      openingDate: toIso_(r[2]),
-      type: r[3] || '',
-      notes: r[4] || ''
-    };
-    walletBalances[name] = opening;
-  });
-  allInc.forEach(r => {
-    const amt = parseFloat(r[2]) || 0;
-    const src = r[4] || 'Cash';
-    walletBalances[src] = (walletBalances[src] || 0) + amt;
-  });
-  allExp.forEach(r => {
-    const amt = parseFloat(r[3]) || 0;
-    const src = r[5] || 'Cash';
-    walletBalances[src] = (walletBalances[src] || 0) - amt;
-  });
-  let legacySavingsCount = 0;
-  allSav.forEach(r => {
-    if (!r[0]) return;
-    const amt = parseFloat(r[2]) || 0;
-    const src = r[4] || 'BRI';
-    const destination = r[5] ? String(r[5]).trim() : '';
-    if (!destination) legacySavingsCount++;
-    // Legacy rows have no known origin: keep their previous balance calculation
-    // until the owner reconciles them. New rows are internal transfers.
-    walletBalances[src] = (walletBalances[src] || 0) - amt;
-    if (destination) walletBalances[destination] = (walletBalances[destination] || 0) + amt;
-  });
-  // Transfers: keluar dari FromWallet, masuk ke ToWallet (fee dipotong dari From).
-  const allTransfers = getSheetData_(SHEET_NAMES.TRANSFER);
-  allTransfers.forEach(r => {
-    if (!r[0]) return;
-    const from = (r[1] || '').toString();
-    const to = (r[2] || '').toString();
-    const amt = parseFloat(r[3]) || 0;
-    const fee = parseFloat(r[4]) || 0;
-    if (from) walletBalances[from] = (walletBalances[from] || 0) - amt - fee;
-    if (to) walletBalances[to] = (walletBalances[to] || 0) + amt;
-  });
+  const { walletConfigs, walletMeta, walletBalances, legacySavingsCount } =
+    calculateWalletBalances_(allInc, allExp, allSav);
 
   // ── Wallet-aware liquid assets (FIX double-count) ──
   // Dulu: liquidAssets = sum(asset rows tipe Kas/Bank/E-Wallet) — sering
@@ -2073,6 +2032,160 @@ GAYA & ATURAN:
 }
 
 
+
+// Saldo saat ini berasal dari satu perhitungan yang dipakai dashboard dan
+// pencocokan; koreksi yang disetujui masuk sekali saja melalui ledger terpisah.
+function calculateWalletBalances_(income, expenses, savings) {
+  const allInc = income || getSheetData_(SHEET_NAMES.INCOME);
+  const allExp = expenses || getSheetData_(SHEET_NAMES.EXPENSE);
+  const allSav = savings || getSheetData_(SHEET_NAMES.SAVING);
+  const walletConfigs = getSheetData_(SHEET_NAMES.WALLET);
+  const walletMeta = Object.create(null);
+  const walletBalances = Object.create(null);
+  walletConfigs.forEach(r => {
+    const name = String(r[0] || '').trim();
+    if (!name) return;
+    const opening = Number(r[1]) || 0;
+    walletMeta[name] = {
+      opening: opening, openingDate: toIso_(r[2]),
+      type: r[3] || '', notes: r[4] || ''
+    };
+    walletBalances[name] = opening;
+  });
+  allInc.forEach(r => {
+    const src = String(r[4] || 'Cash').trim();
+    walletBalances[src] = (walletBalances[src] || 0) + (Number(r[2]) || 0);
+  });
+  allExp.forEach(r => {
+    const src = String(r[5] || 'Cash').trim();
+    walletBalances[src] = (walletBalances[src] || 0) - (Number(r[3]) || 0);
+  });
+  let legacySavingsCount = 0;
+  allSav.forEach(r => {
+    if (!r[0]) return;
+    const amount = Number(r[2]) || 0;
+    const source = String(r[4] || 'BRI').trim();
+    const destination = String(r[5] || '').trim();
+    if (!destination) legacySavingsCount++;
+    walletBalances[source] = (walletBalances[source] || 0) - amount;
+    if (destination) walletBalances[destination] = (walletBalances[destination] || 0) + amount;
+  });
+  getSheetData_(SHEET_NAMES.TRANSFER).forEach(r => {
+    if (!r[0]) return;
+    const from = String(r[1] || '').trim();
+    const to = String(r[2] || '').trim();
+    const amount = Number(r[3]) || 0;
+    const fee = Number(r[4]) || 0;
+    if (from) walletBalances[from] = (walletBalances[from] || 0) - amount - fee;
+    if (to) walletBalances[to] = (walletBalances[to] || 0) + amount;
+  });
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.RECONCILIATION);
+  if (sheet && sheet.getLastRow() > 1) {
+    const walletIdx = colIndex_(sheet, 'Wallet');
+    const appliedIdx = colIndex_(sheet, 'AppliedAt');
+    const amountIdx = colIndex_(sheet, 'AppliedAmount');
+    getSheetData_(SHEET_NAMES.RECONCILIATION).forEach(r => {
+      const name = String(r[walletIdx] || '').trim();
+      if (!name || !r[appliedIdx]) return;
+      walletBalances[name] = (walletBalances[name] || 0) + (Number(r[amountIdx]) || 0);
+    });
+  }
+  return { walletConfigs, walletMeta, walletBalances, legacySavingsCount };
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  Pencocokan saldo — pengecekan tidak mengubah saldo; koreksi perlu aksi kedua.
+// ════════════════════════════════════════════════════════════════════
+function listWalletReconciliations() {
+  initSheets_();
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.RECONCILIATION);
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  const idx = name => headers.indexOf(name);
+  const records = getSheetData_(SHEET_NAMES.RECONCILIATION).map(r => ({
+    id: String(r[idx('Id')] || ''),
+    checkedAt: r[idx('CheckedAt')] ? new Date(r[idx('CheckedAt')]).toISOString() : '',
+    wallet: String(r[idx('Wallet')] || ''),
+    bookBalance: Number(r[idx('BookBalance')]) || 0,
+    actualBalance: Number(r[idx('ActualBalance')]) || 0,
+    difference: Number(r[idx('Difference')]) || 0,
+    notes: String(r[idx('Notes')] || ''),
+    appliedAt: r[idx('AppliedAt')] ? new Date(r[idx('AppliedAt')]).toISOString() : '',
+    appliedAmount: Number(r[idx('AppliedAmount')]) || 0
+  })).filter(r => r.id).slice(-30).reverse();
+  return { success: true, balances: calculateWalletBalances_().walletBalances, records };
+}
+
+function recordWalletReconciliation(data) {
+  initSheets_();
+  const wallet = String(data.wallet || '').trim();
+  const actual = Number(data.actualBalance);
+  const notes = String(data.notes || '').trim();
+  if (!wallet || data.actualBalance === '' || data.actualBalance == null ||
+      !Number.isSafeInteger(actual)) {
+    return { success: false, error: 'Pilih dompet dan isi saldo sebenarnya dalam rupiah.' };
+  }
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) throw new Error('Sistem sedang sibuk, coba lagi sebentar.');
+  try {
+    const balances = calculateWalletBalances_().walletBalances;
+    if (!Object.prototype.hasOwnProperty.call(balances, wallet)) {
+      return { success: false, error: 'Dompet tidak ditemukan. Muat ulang daftar dompet.' };
+    }
+    const book = balances[wallet];
+    const diff = actual - book;
+    const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.RECONCILIATION);
+    const row = new Array(sh.getLastColumn()).fill('');
+    const fields = {
+      Id: Utilities.getUuid(), CheckedAt: new Date(), Wallet: wallet,
+      BookBalance: book, ActualBalance: actual, Difference: diff, Notes: notes
+    };
+    Object.keys(fields).forEach(key => { row[colIndex_(sh, key)] = fields[key]; });
+    sh.appendRow(row);
+    return { success: true, id: fields.Id, difference: diff,
+      msg: diff ? 'Pengecekan tercatat. Periksa transaksi yang terlewat sebelum menyesuaikan saldo.' :
+        'Saldo cocok. Pengecekan tercatat.' };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function applyWalletAdjustment(data) {
+  initSheets_();
+  const id = String(data.id || '').trim();
+  if (!id) return { success: false, error: 'Pilih catatan pengecekan.' };
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) throw new Error('Sistem sedang sibuk, coba lagi sebentar.');
+  try {
+    const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.RECONCILIATION);
+    const idIdx = colIndex_(sh, 'Id');
+    const rows = getSheetData_(SHEET_NAMES.RECONCILIATION);
+    const pos = rows.findIndex(r => String(r[idIdx]) === id);
+    if (pos === -1) return { success: false, error: 'Catatan pengecekan tidak ditemukan.' };
+    const r = rows[pos];
+    if (r[colIndex_(sh, 'AppliedAt')]) {
+      return { success: false, error: 'Penyesuaian ini sudah diterapkan.' };
+    }
+    const amount = Number(r[colIndex_(sh, 'Difference')]);
+    const wallet = String(r[colIndex_(sh, 'Wallet')]);
+    const book = Number(r[colIndex_(sh, 'BookBalance')]);
+    if (!Number.isFinite(amount) || amount === 0) {
+      return { success: false, error: 'Tidak ada selisih yang perlu disesuaikan.' };
+    }
+    const reason = String(data.notes || r[colIndex_(sh, 'Notes')] || '').trim();
+    if (!reason) return { success: false, error: 'Isi alasan selisih sebelum menerapkan penyesuaian.' };
+    const current = calculateWalletBalances_().walletBalances[wallet];
+    if (current !== book) {
+      return { success: false, error: 'Saldo aplikasi sudah berubah sejak pengecekan. Catat pengecekan baru sebelum menyesuaikan.' };
+    }
+    sh.getRange(pos + 2, colIndex_(sh, 'Notes') + 1).setValue(reason);
+    sh.getRange(pos + 2, colIndex_(sh, 'AppliedAt') + 1).setValue(new Date());
+    sh.getRange(pos + 2, colIndex_(sh, 'AppliedAmount') + 1).setValue(amount);
+    invalidateCache_();
+    return { success: true, msg: 'Penyesuaian saldo tercatat. Riwayat transaksi lama tetap utuh.' };
+  } finally {
+    lock.releaseLock();
+  }
+}
 
 // ════════════════════════════════════════════════════════════════════
 //  CRUD — Wallets (Opening Balance + metadata per dompet)

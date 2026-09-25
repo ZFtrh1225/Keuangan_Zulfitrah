@@ -28,7 +28,7 @@
    * "berkurang dua kali" di laporan). Read-only action (get / list) aman
    * di-retry karena cuma membaca data, jadi default retries-nya tetap jalan.
    */
-  const MUTATING_PREFIXES = ['add', 'edit', 'update', 'delete', 'save', 'rotate'];
+  const MUTATING_PREFIXES = ['add', 'edit', 'update', 'delete', 'save', 'rotate', 'record', 'apply'];
   function isMutating(action) {
     return MUTATING_PREFIXES.some(p => action.indexOf(p) === 0);
   }
@@ -117,6 +117,7 @@
   const listTemplates = () => call('listTemplates', {});
   const listBills = (month, year) => call('listBills', { month, year });
   const listWallets = () => call('listWallets', {});
+  const listWalletReconciliations = () => call('listWalletReconciliations', {});
   const listTransfers = (month, year) => call('listTransfers', { month, year });
   const getAuthStatus = () => call('getAuthStatus', {}, { retries: 0, timeoutMs: 8000 });
 
@@ -131,6 +132,8 @@
   const addTemplate = (data) => call('addTemplate', data);
   const addBill = (data) => call('addBill', data);
   const addWallet = (data) => call('addWallet', data);
+  const recordWalletReconciliation = (data) => call('recordWalletReconciliation', data);
+  const applyWalletAdjustment = (id, notes) => call('applyWalletAdjustment', { id, notes });
   const addTransfer = (data) => call('addTransfer', data);
 
   // ── Update ──
@@ -164,9 +167,9 @@
   MT.api = {
     API_URL, call, getSecret, setSecret,
     getDashboardData, listRecentTransactions, listGoals, getSettings, getCategories,
-    listTemplates, listBills, listWallets, listTransfers, getAuthStatus,
+    listTemplates, listBills, listWallets, listWalletReconciliations, listTransfers, getAuthStatus,
     addIncome, addExpense, addSaving, addAsset, addDebt, addGoal, addGoalDeposit,
-    addTemplate, addBill, addWallet, addTransfer,
+    addTemplate, addBill, addWallet, addTransfer, recordWalletReconciliation, applyWalletAdjustment,
     editTransaction, updateGoal, updateDebt, updateWallet, saveSettings, saveAppSecret,
     deleteTransaction, deleteWealthItem, deleteGoal, deleteTemplate, deleteBill,
     deleteWallet, deleteTransfer,

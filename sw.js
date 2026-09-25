@@ -6,7 +6,7 @@
  *  - Apps Script API (POST): network-only (data must be fresh)
  */
 
-const CACHE_NAME = 'mtpro-v6-linked-goals';
+const CACHE_NAME = 'mtpro-v7-wallet-reconciliation';
 const STATIC_ASSETS = [
   './',
   './index.html',
