@@ -775,6 +775,10 @@
             </div>
             <div class="muted micro-label">Tabungan memindahkan uang dari dompet asal ke rekening tujuan.</div>
           </div>
+          <div class="form-group mb-14">
+            <label class="form-label" for="savGoalSelect">Hubungkan ke Tujuan (opsional)</label>
+            <select class="form-input" id="savGoalSelect"><option value="">Tanpa tujuan</option></select>
+          </div>
           <button class="btn-submit" id="btnSubmitSaving">Simpan Tabungan 💰</button>
         </div>
       </div>
@@ -888,11 +892,12 @@
             </div>
           </div>
           <div class="form-group">
-            <label class="form-label" for="goalSaved">Sudah Terkumpul (Rp)</label>
+            <label class="form-label" for="goalSaved">Saldo Awal Tujuan (Rp)</label>
             <div class="amount-input-wrap">
               <span class="amount-prefix">Rp</span>
               <input type="text" inputmode="numeric" class="form-input currency-mask" id="goalSaved" placeholder="0" />
             </div>
+            <div class="muted micro-label">Termasuk setoran lama yang belum terhubung. Setoran baru akan ditambahkan otomatis.</div>
           </div>
         </div>
         <div class="form-row">
@@ -963,8 +968,22 @@
             </div>
           </div>
         </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="depositSource">Dompet Asal *</label>
+            <select class="form-input" id="depositSource"></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="depositDestination">Rekening Tujuan *</label>
+            <select class="form-input" id="depositDestination"></select>
+          </div>
+        </div>
+        <div class="form-group mb-14">
+          <label class="form-label" for="depositDate">Tanggal *</label>
+          <input type="date" class="form-input" id="depositDate" />
+        </div>
         <div class="muted micro-label" style="margin-bottom:14px;">
-          💡 Tips: catat juga sebagai <b>Tabungan</b> di menu Transaksi supaya saldo dompet ikut terupdate.
+          Setoran ini sekaligus tercatat sebagai perpindahan saldo pada transaksi Tabungan.
         </div>
         <button class="btn-submit btn-success" id="btnSubmitDeposit">Tambah Setoran 💰</button>
       </div>

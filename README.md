@@ -99,6 +99,21 @@ Tabungan baru adalah perpindahan antar dompet. Bila tujuan merupakan investasi,
 atur jenis dompet tujuan sebagai `Investasi`; jangan catat saldo akun yang sama
 sekali lagi sebagai aset manual karena itu menggandakan kekayaan bersih.
 
-Setoran pada kartu Tujuan masih merupakan catatan progress terpisah. Pencatatan
-tabungan baru belum otomatis mengubah progress tujuan; integrasi ini memerlukan
-pemetaan tujuan dan setoran lama sebelum data historis dapat disatukan.
+## 🎯 Setoran Tujuan Terhubung
+
+Deploy backend baru **sebelum** merge frontend. Backend menambahkan kolom `Id`
+ke sheet `Goals` dan `GoalId` ke sheet `Savings`; ID tujuan lama akan dibuat
+otomatis tanpa mengubah nilai `Saved`. Kolom `Saved` lama kini menjadi **Saldo
+Awal Tujuan**, sedangkan progress yang ditampilkan adalah saldo awal ditambah
+semua transaksi tabungan yang tertaut. Tidak ada setoran lama yang ditautkan
+secara otomatis karena asal dananya belum dapat dipastikan.
+
+Tombol **+ Setor** pada kartu tujuan meminta dompet asal, rekening tujuan,
+tanggal, dan nominal. Satu penyimpanan menambah baris `Savings` bertautan;
+saldo dompet serta progress tujuan dihitung dari baris itu. Form Tabungan juga
+menyediakan pilihan tujuan opsional. Edit atau hapus transaksi bertautan akan
+mengubah progress otomatis. Menghapus tujuan melepas tautannya tetapi tetap
+menyimpan transaksi dan perpindahan uang.
+
+Jangan catat kembali setoran yang sama melalui form Tabungan. Setelah update,
+periksa contoh setoran kecil dan cocokkan saldo dompet serta progress tujuan.

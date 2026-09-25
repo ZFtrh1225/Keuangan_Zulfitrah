@@ -219,7 +219,7 @@ function initSheets_() {
     { name: SHEET_NAMES.EXPENSE, headers: ['Date', 'Category', 'Subcategory', 'Amount', 'Notes', 'Source'] },
     // Destination is appended so existing rows keep their original layout.
     // A blank Destination marks a legacy saving whose origin is unknown.
-    { name: SHEET_NAMES.SAVING,  headers: ['Date', 'Type', 'Amount', 'Notes', 'Source', 'Destination'] },
+    { name: SHEET_NAMES.SAVING,  headers: ['Date', 'Type', 'Amount', 'Notes', 'Source', 'Destination', 'GoalId'] },
     { name: SHEET_NAMES.ASSET,   headers: ['Date', 'Type', 'Name', 'Value', 'Institution'] },
     // Debt: kolom MinPayment + InterestRate ditambahkan untuk perhitungan
     // DSR yang riil & debt-payoff calculator. Sheet lama (5 kolom) akan
@@ -228,7 +228,8 @@ function initSheets_() {
     // InflationSensitive/InflationRate: untuk goal yang targetnya adalah
     // harga barang/jasa masa depan (DP rumah, biaya kuliah) yang ikut naik
     // seiring inflasi — beda dengan goal nominal tetap (dana darurat).
-    { name: SHEET_NAMES.GOAL,    headers: ['Date', 'Name', 'Target', 'Saved', 'Deadline', 'Category', 'Notes', 'InflationSensitive', 'InflationRate'] },
+    // Saved is the existing opening progress. Future linked savings are summed separately.
+    { name: SHEET_NAMES.GOAL,    headers: ['Date', 'Name', 'Target', 'Saved', 'Deadline', 'Category', 'Notes', 'InflationSensitive', 'InflationRate', 'Id'] },
     // Template transaksi cepat — user simpan transaksi yg sering muncul
     // Kind: 'income' | 'expense' | 'saving'. Untuk expense, pakai Category+Subcategory.
     // Untuk income/saving, pakai TypeText (di kolom Category) — Subcategory kosong.
@@ -267,6 +268,27 @@ function initSheets_() {
       }
     }
   });
+  // Assign stable IDs to existing goals once. Sheet row numbers can change
+  // after a deletion, so they cannot safely identify a linked saving.
+  const goals = ss.getSheetByName(SHEET_NAMES.GOAL);
+  if (goals.getLastRow() > 1) {
+    const idColumn = colIndex_(goals, 'Id') + 1;
+    const cells = goals.getRange(2, idColumn, goals.getLastRow() - 1, 1);
+    if (cells.getValues().some(r => !r[0])) {
+      const lock = LockService.getScriptLock();
+      if (!lock.tryLock(10000)) throw new Error('Sistem sedang sibuk, coba lagi sebentar.');
+      try {
+        const ids = cells.getValues(); // re-read under lock
+        let changed = false;
+        ids.forEach(row => {
+          if (!row[0]) { row[0] = Utilities.getUuid(); changed = true; }
+        });
+        if (changed) cells.setValues(ids);
+      } finally {
+        lock.releaseLock();
+      }
+    }
+  }
 }
 
 /**
@@ -312,6 +334,7 @@ function addSaving(data) {
   initSheets_();
   const source = String(data.source || '').trim();
   const destination = String(data.destination || '').trim();
+  const goalId = String(data.goalId || '').trim();
   const amount = Number(data.amount);
   if (!source || !destination || source === destination) {
     return { success: false, error: 'Pilih dompet asal dan rekening tujuan yang berbeda.' };
@@ -319,11 +342,29 @@ function addSaving(data) {
   if (!Number.isFinite(amount) || amount <= 0 || !data.date || isNaN(new Date(data.date).getTime())) {
     return { success: false, error: 'Tanggal dan nominal tabungan harus valid (lebih dari 0).' };
   }
-  SpreadsheetApp.getActiveSpreadsheet()
-    .getSheetByName(SHEET_NAMES.SAVING)
-    .appendRow([data.date, data.type, amount, data.notes || '', source, destination]);
-  invalidateCache_();
-  return { success: true, msg: 'Tabungan berhasil disimpan! 💰' };
+  const save = () => {
+    const goalSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.GOAL);
+    const idIdx = colIndex_(goalSheet, 'Id');
+    if (goalId && !getSheetData_(SHEET_NAMES.GOAL).some(r => String(r[idIdx]) === goalId)) {
+      return { success: false, error: 'Tujuan tidak ditemukan. Muat ulang daftar tujuan.' };
+    }
+    const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.SAVING);
+    const row = new Array(sh.getLastColumn()).fill('');
+    row[0] = data.date; row[1] = data.type; row[2] = amount;
+    row[3] = data.notes || ''; row[4] = source;
+    row[colIndex_(sh, 'Destination')] = destination;
+    row[colIndex_(sh, 'GoalId')] = goalId;
+    sh.appendRow(row);
+    invalidateCache_();
+    return { success: true, msg: goalId ? 'Setoran tujuan dan perpindahan saldo tercatat 💰' : 'Tabungan berhasil disimpan! 💰' };
+  };
+  // A linked saving and goal deletion must never race each other.
+  if (goalId) {
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(10000)) throw new Error('Sistem sedang sibuk, coba lagi sebentar.');
+    try { return save(); } finally { lock.releaseLock(); }
+  }
+  return save();
 }
 
 function addAsset(data) {
@@ -394,34 +435,48 @@ function editTransaction(data) {
 
   const row = parseInt(data.rowIndex, 10);
   if (!row || row < 2 || row > sh.getLastRow()) throw new Error('Index baris tidak valid');
-
-  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-  const f = data.fields || {};
-  if (data.sheet === 'saving' && f.destination !== undefined) {
-    const source = String(f.source || '').trim();
-    const destination = String(f.destination || '').trim();
-    if (!source || !destination || source === destination) {
-      return { success: false, error: 'Dompet asal dan rekening tujuan harus berbeda.' };
+  const save = () => {
+    const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+    const f = data.fields || {};
+    if (data.sheet === 'saving') {
+      const old = sh.getRange(row, 1, 1, sh.getLastColumn()).getValues()[0];
+      const source = String(f.source !== undefined ? f.source : old[4]).trim();
+      const destination = String(f.destination !== undefined ? f.destination : old[headers.indexOf('Destination')]).trim();
+      const goalId = String(f.goalId !== undefined ? f.goalId : old[headers.indexOf('GoalId')] || '').trim();
+      if (destination && (!source || source === destination)) {
+        return { success: false, error: 'Dompet asal dan rekening tujuan harus berbeda.' };
+      }
+      const goalSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.GOAL);
+      const idIdx = colIndex_(goalSheet, 'Id');
+      if (goalId && (!destination || !getSheetData_(SHEET_NAMES.GOAL).some(r => String(r[idIdx]) === goalId))) {
+        return { success: false, error: 'Pilih tujuan yang masih tersedia dan lengkapi rekening tujuan.' };
+      }
+      const amount = f.amount !== undefined ? Number(f.amount) : Number(old[2]);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return { success: false, error: 'Nominal tabungan harus lebih dari 0.' };
+      }
     }
-  }
 
-  // Mapping field name → header column index
-  const map = {
-    date: 'Date', amount: 'Amount', notes: 'Notes', source: 'Source', destination: 'Destination',
-    type: 'Type', category: 'Category', subcategory: 'Subcategory'
+    const map = {
+      date: 'Date', amount: 'Amount', notes: 'Notes', source: 'Source', destination: 'Destination',
+      goalId: 'GoalId', type: 'Type', category: 'Category', subcategory: 'Subcategory'
+    };
+    Object.keys(f).forEach(k => {
+      const colName = map[k];
+      if (!colName) return;
+      const idx = headers.indexOf(colName);
+      if (idx === -1) return;
+      let val = f[k];
+      if (k === 'amount') val = Number(val);
+      sh.getRange(row, idx + 1).setValue(val);
+    });
+    invalidateCache_();
+    return { success: true, msg: 'Transaksi berhasil diperbarui ✏️' };
   };
-  Object.keys(f).forEach(k => {
-    const colName = map[k];
-    if (!colName) return;
-    const idx = headers.indexOf(colName);
-    if (idx === -1) return;
-    let val = f[k];
-    if (k === 'amount') val = Number(val);
-    sh.getRange(row, idx + 1).setValue(val);
-  });
-
-  invalidateCache_();
-  return { success: true, msg: 'Transaksi berhasil diperbarui ✏️' };
+  if (data.sheet !== 'saving') return save();
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) throw new Error('Sistem sedang sibuk, coba lagi sebentar.');
+  try { return save(); } finally { lock.releaseLock(); }
 }
 
 /**
@@ -433,10 +488,16 @@ function deleteTransaction(sheet, rowIndex) {
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
   if (!sh) throw new Error('Sheet tidak ditemukan: ' + sheetName);
   const row = parseInt(rowIndex, 10);
-  if (!row || row < 2) throw new Error('Index baris tidak valid');
-  sh.deleteRow(row);
-  invalidateCache_();
-  return { success: true, msg: 'Transaksi berhasil dihapus 🗑️' };
+  if (!row || row < 2 || row > sh.getLastRow()) throw new Error('Index baris tidak valid');
+  const remove = () => {
+    sh.deleteRow(row);
+    invalidateCache_();
+    return { success: true, msg: 'Transaksi berhasil dihapus 🗑️' };
+  };
+  if (sheet !== 'saving') return remove();
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) throw new Error('Sistem sedang sibuk, coba lagi sebentar.');
+  try { return remove(); } finally { lock.releaseLock(); }
 }
 
 function sheetForKind_(kind) {
@@ -463,13 +524,27 @@ function deleteWealthItem(type, rowIndex) {
 
 function listGoals() {
   initSheets_();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const goalIdIdx = colIndex_(ss.getSheetByName(SHEET_NAMES.GOAL), 'Id');
+  const savingGoalIdIdx = colIndex_(ss.getSheetByName(SHEET_NAMES.SAVING), 'GoalId');
   const rows = getSheetData_(SHEET_NAMES.GOAL);
+  const linked = {};
+  getSheetData_(SHEET_NAMES.SAVING).forEach(r => {
+    const id = String(r[savingGoalIdIdx] || '').trim();
+    if (!id || !r[0]) return;
+    if (!linked[id]) linked[id] = { amount: 0, count: 0 };
+    linked[id].amount += Number(r[2]) || 0;
+    linked[id].count++;
+  });
   const items = rows.map((r, i) => ({
     rowIndex: i + 2,
+    id: String(r[goalIdIdx] || ''),
     date: toIso_(r[0]),
     name: r[1] || '',
     target: parseFloat(r[2]) || 0,
-    saved: parseFloat(r[3]) || 0,
+    savedBaseline: parseFloat(r[3]) || 0,
+    saved: (parseFloat(r[3]) || 0) + (linked[String(r[goalIdIdx])]?.amount || 0),
+    linkedCount: linked[String(r[goalIdIdx])]?.count || 0,
     deadline: toIso_(r[4]),
     category: r[5] || 'Umum',
     notes: r[6] || '',
@@ -481,19 +556,15 @@ function listGoals() {
 
 function addGoal(data) {
   initSheets_();
-  SpreadsheetApp.getActiveSpreadsheet()
-    .getSheetByName(SHEET_NAMES.GOAL)
-    .appendRow([
-      new Date(),
-      data.name || 'Tujuan Baru',
-      Number(data.target) || 0,
-      Number(data.saved) || 0,
-      data.deadline || '',
-      data.category || 'Umum',
-      data.notes || '',
-      !!data.inflationSensitive,
-      data.inflationRate != null ? Number(data.inflationRate) : 6
-    ]);
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.GOAL);
+  const row = new Array(sh.getLastColumn()).fill('');
+  row.splice(0, 9,
+    new Date(), data.name || 'Tujuan Baru', Number(data.target) || 0,
+    Number(data.saved) || 0, data.deadline || '', data.category || 'Umum',
+    data.notes || '', !!data.inflationSensitive,
+    data.inflationRate != null ? Number(data.inflationRate) : 6);
+  row[colIndex_(sh, 'Id')] = Utilities.getUuid();
+  sh.appendRow(row);
   return { success: true, msg: 'Tujuan keuangan berhasil ditambahkan! 🎯' };
 }
 
@@ -518,10 +589,31 @@ function updateGoal(data) {
 }
 
 function deleteGoal(rowIndex) {
+  initSheets_();
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.GOAL);
   if (!sh) throw new Error('Sheet Goals tidak ditemukan');
-  sh.deleteRow(parseInt(rowIndex, 10));
-  return { success: true, msg: 'Tujuan dihapus 🗑️' };
+  const row = parseInt(rowIndex, 10);
+  if (!row || row < 2 || row > sh.getLastRow()) throw new Error('Index tujuan tidak valid');
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) throw new Error('Sistem sedang sibuk, coba lagi sebentar.');
+  try {
+    const id = String(sh.getRange(row, colIndex_(sh, 'Id') + 1).getValue() || '');
+    const savings = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.SAVING);
+    let unlinked = 0;
+    if (id && savings.getLastRow() > 1) {
+      const cells = savings.getRange(2, colIndex_(savings, 'GoalId') + 1, savings.getLastRow() - 1, 1);
+      const values = cells.getValues();
+      values.forEach(r => { if (String(r[0]) === id) { r[0] = ''; unlinked++; } });
+      if (unlinked) cells.setValues(values);
+    }
+    sh.deleteRow(row);
+    invalidateCache_();
+    return { success: true, msg: unlinked
+      ? 'Tujuan dihapus. ' + unlinked + ' transaksi tabungan tetap tersimpan tanpa tautan tujuan.'
+      : 'Tujuan dihapus 🗑️' };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**
@@ -1582,6 +1674,9 @@ function listRecentTransactions(month, year, limit) {
   const incRows = getSheetDataWithRowIndex_(SHEET_NAMES.INCOME);
   const expRows = getSheetDataWithRowIndex_(SHEET_NAMES.EXPENSE);
   const savRows = getSheetDataWithRowIndex_(SHEET_NAMES.SAVING);
+  const savingsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.SAVING);
+  const destinationIdx = colIndex_(savingsSheet, 'Destination');
+  const goalIdIdx = colIndex_(savingsSheet, 'GoalId');
 
   const all = [];
 
@@ -1636,7 +1731,8 @@ function listRecentTransactions(month, year, limit) {
       amount: parseFloat(row[2]) || 0,
       notes: row[3] || '',
       source: row[4] || '',
-      destination: row[5] || ''
+      destination: row[destinationIdx] || '',
+      goalId: row[goalIdIdx] || ''
     });
   });
 
