@@ -132,6 +132,7 @@
   const addGoalDeposit = (rowIndex, amount) => call('addGoalDeposit', { rowIndex, amount });
   const addTemplate = (data) => call('addTemplate', data);
   const addBill = (data) => call('addBill', data);
+  const recordBillPayment = (data) => call('recordBillPayment', data);
   const updateBill = (data) => call('updateBill', data);
   const addWallet = (data) => call('addWallet', data);
   const recordWalletReconciliation = (data) => call('recordWalletReconciliation', data);
@@ -140,8 +141,8 @@
   const addTransfer = (data) => call('addTransfer', data);
 
   // ── Update ──
-  const editTransaction = (sheet, rowIndex, fields) =>
-    call('editTransaction', { sheet, rowIndex, fields });
+  const editTransaction = (sheet, rowIndex, fields, billId) =>
+    call('editTransaction', { sheet, rowIndex, fields, billId });
   const updateGoal = (data) => call('updateGoal', data);
   const updateDebt = (data) => call('updateDebt', data);
   const updateWallet = (data) => call('updateWallet', data);
@@ -149,7 +150,7 @@
   const saveAppSecret = (newSecret) => call('saveAppSecret', { secret: newSecret });
 
   // ── Delete ──
-  const deleteTransaction = (sheet, rowIndex) => call('deleteTransaction', { sheet, rowIndex });
+  const deleteTransaction = (sheet, rowIndex, billId) => call('deleteTransaction', { sheet, rowIndex, billId });
   const deleteWealthItem = (type, rowIndex) => call('deleteWealthItem', { type, rowIndex });
   const deleteGoal = (rowIndex) => call('deleteGoal', { rowIndex });
   const deleteTemplate = (rowIndex) => call('deleteTemplate', { rowIndex });
@@ -173,7 +174,7 @@
     getDashboardData, listRecentTransactions, listGoals, getSettings, getCategories,
     listTemplates, listBills, listWallets, listWalletReconciliations, listNetWorthSnapshots, listTransfers, getAuthStatus,
     addIncome, addExpense, addSaving, addAsset, addDebt, addGoal, addGoalDeposit,
-    addTemplate, addBill, updateBill, addWallet, addTransfer, recordWalletReconciliation, applyWalletAdjustment,
+    addTemplate, addBill, updateBill, recordBillPayment, addWallet, addTransfer, recordWalletReconciliation, applyWalletAdjustment,
     recordNetWorthSnapshot,
     editTransaction, updateGoal, updateDebt, updateWallet, saveSettings, saveAppSecret,
     deleteTransaction, deleteWealthItem, deleteGoal, deleteTemplate, deleteBill,

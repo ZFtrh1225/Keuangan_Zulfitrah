@@ -349,6 +349,74 @@ test('marking paid updates calendar and priorities without changing cashflow or 
   assert.equal(app.getDashboardData(9, 2026).calendar.remainingCommitment, 200000);
 });
 
+test('paying a bill records exactly one expense, marks it paid, and editing follows the link', () => {
+  const { context: app, sheets } = backend('2026-09-28T12:00:00+07:00');
+  app.addWallet({ name: 'BRI', opening: 500000, openingDate: '2026-09-01', type: 'Bank' });
+  app.addBill({ name: 'PBB', dueDate: '2026-10-02', amount: 200000, wallet: 'BRI' });
+  const id = app.listBills(10, 2026).bills[0].id;
+  const payment = { id, date: '2026-09-28', amount: 180000, wallet: 'BRI',
+    category: 'Kewajiban & Utang', subcategory: 'Pajak (PBB/STNK)' };
+  assert.equal(app.recordBillPayment(payment).success, true);
+  assert.equal(app.recordBillPayment(payment).alreadyRecorded, true);
+  const expenses = sheets.get('Expenses');
+  assert.equal(expenses.rows.length, 2);
+  assert.equal(expenses.rows[1][expenses.rows[0].indexOf('BillId')], id);
+  const dashboard = app.getDashboardData(9, 2026);
+  assert.equal(dashboard.summary.totalExp, 180000);
+  assert.equal(dashboard.walletBalances.BRI, 320000);
+  assert.equal(dashboard.manualBills[0].linkedExpense, true);
+  assert.equal(dashboard.calendar.remainingCount, 0);
+  assert.equal(app.updateBill({ id, paid: false }).success, false);
+  assert.equal(app.deleteBill(null, id).success, false);
+  const tx = app.listRecentTransactions(9, 2026, 10).transactions.find(t => t.kind === 'expense');
+  assert.equal(tx.billId, id);
+  assert.equal(app.editTransaction({ sheet: 'expense', rowIndex: tx.rowIndex, billId: id,
+    fields: { amount: 190000 } }).success, true);
+  assert.equal(app.getDashboardData(9, 2026).walletBalances.BRI, 310000);
+  assert.equal(app.deleteTransaction('expense', tx.rowIndex, id).success, true);
+  assert.equal(app.getDashboardData(9, 2026).walletBalances.BRI, 500000);
+  assert.equal(app.listBills(10, 2026).bills[0].paid, false);
+  assert.equal(app.deleteBill(null, id).success, true);
+});
+
+test('partial payment write is recoverable without duplicating a deduction', () => {
+  const { context: app, sheets } = backend('2026-09-28T12:00:00+07:00');
+  app.addWallet({ name: 'BRI', opening: 300000, openingDate: '2026-09-01', type: 'Bank' });
+  app.addBill({ name: 'Pajak', dueDate: '2026-09-30', amount: 100000 });
+  const id = app.listBills(9, 2026).bills[0].id;
+  const billSheet = sheets.get('Bills');
+  const originalRange = billSheet.getRange;
+  let failOnce = true;
+  billSheet.getRange = function (row, col, height, width) {
+    const range = originalRange.call(this, row, col, height, width);
+    if (failOnce && row === 2 && col === billSheet.rows[0].indexOf('PaidAt') + 1) {
+      range.setValue = () => { failOnce = false; throw new Error('write interrupted'); };
+    }
+    return range;
+  };
+  const input = { id, date: '2026-09-28', amount: 100000, wallet: 'BRI', category: 'Kewajiban & Utang' };
+  assert.throws(() => app.recordBillPayment(input), /write interrupted/);
+  assert.equal(app.listBills(9, 2026).bills[0].paid, true);
+  assert.equal(app.recordBillPayment(input).alreadyRecorded, true);
+  assert.equal(sheets.get('Expenses').rows.length, 2);
+  assert.equal(app.getDashboardData(9, 2026).walletBalances.BRI, 200000);
+  assert.equal(app.listBills(9, 2026).bills[0].wallet, 'BRI');
+});
+
+test('linked expense actions reject a stale row after a deletion', () => {
+  const { context: app } = backend('2026-09-28T12:00:00+07:00');
+  app.addWallet({ name: 'Cash', opening: 10000, openingDate: '2026-09-01', type: 'Tunai' });
+  app.addBill({ name: 'A', dueDate: '2026-09-29', amount: 1000 });
+  const id = app.listBills(9, 2026).bills[0].id;
+  app.recordBillPayment({ id, date: '2026-09-28', amount: 1000, wallet: 'Cash', category: 'Kewajiban & Utang' });
+  app.addExpense({ date: '2026-09-28', amount: 2000, source: 'Cash', category: 'Makanan Pokok & Minuman' });
+  assert.equal(app.deleteTransaction('expense', 2, id).success, true);
+  assert.equal(app.deleteTransaction('expense', 2, id).success, false);
+  assert.equal(app.editTransaction({ sheet: 'expense', rowIndex: 2, billId: id,
+    fields: { amount: 3000 } }).success, false);
+  assert.equal(app.getDashboardData(9, 2026).summary.totalExp, 2000);
+});
+
 test('bill input validation prevents invented dates and unknown wallets', () => {
   const { context: app } = backend('2026-12-29T12:00:00+07:00');
   assert.equal(app.addBill({ name: 'A', dueDate: '2026-02-31', amount: 10 }).success, false);

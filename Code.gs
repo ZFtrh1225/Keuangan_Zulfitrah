@@ -179,6 +179,7 @@ function handleAction_(e) {
       case 'addGoalDeposit':         return addGoalDeposit(data);
       case 'addTemplate':            return addTemplate(data);
       case 'addBill':                return addBill(data);
+      case 'recordBillPayment':      return recordBillPayment(data);
       case 'addWallet':              return addWallet(data);
       case 'recordWalletReconciliation': return recordWalletReconciliation(data);
       case 'applyWalletAdjustment':  return applyWalletAdjustment(data);
@@ -193,7 +194,7 @@ function handleAction_(e) {
       case 'saveSettings':           return saveSettings(data);
       case 'saveAppSecret':          return saveAppSecret(data);
       // ── Delete ──
-      case 'deleteTransaction':      return deleteTransaction(data.sheet, data.rowIndex);
+      case 'deleteTransaction':      return deleteTransaction(data.sheet, data.rowIndex, data.billId);
       case 'deleteWealthItem':       return deleteWealthItem(data.type, data.rowIndex);
       case 'deleteGoal':             return deleteGoal(data.rowIndex);
       case 'deleteTemplate':         return deleteTemplate(data.rowIndex);
@@ -224,7 +225,7 @@ function initSheets_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const cfg = [
     { name: SHEET_NAMES.INCOME,  headers: ['Date', 'Type', 'Amount', 'Notes', 'Source'] },
-    { name: SHEET_NAMES.EXPENSE, headers: ['Date', 'Category', 'Subcategory', 'Amount', 'Notes', 'Source'] },
+    { name: SHEET_NAMES.EXPENSE, headers: ['Date', 'Category', 'Subcategory', 'Amount', 'Notes', 'Source', 'BillId'] },
     // Destination is appended so existing rows keep their original layout.
     // A blank Destination marks a legacy saving whose origin is unknown.
     { name: SHEET_NAMES.SAVING,  headers: ['Date', 'Type', 'Amount', 'Notes', 'Source', 'Destination', 'GoalId'] },
@@ -458,7 +459,7 @@ function updateDebt(data) {
  * data: { sheet: 'income'|'expense'|'saving', rowIndex, fields: { date, amount, ... } }
  */
 function editTransaction(data) {
-  if (data.sheet === 'saving') initSheets_();
+  if (data.sheet === 'saving' || data.sheet === 'expense') initSheets_();
   const sheetName = sheetForKind_(data.sheet);
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
   if (!sh) throw new Error('Sheet tidak ditemukan: ' + sheetName);
@@ -468,6 +469,20 @@ function editTransaction(data) {
   const save = () => {
     const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
     const f = data.fields || {};
+    if (data.sheet === 'expense') {
+      const billId = String(sh.getRange(row, headers.indexOf('BillId') + 1).getValue() || '');
+      if ((billId || data.billId) && billId !== String(data.billId || ''))
+        return { success: false, error: 'Transaksi tagihan berubah. Muat ulang daftar transaksi.' };
+      if (billId && (f.date !== undefined && !validBillDate_(String(f.date)) ||
+          f.amount !== undefined && (!Number.isFinite(Number(f.amount)) || Number(f.amount) <= 0) ||
+          f.category !== undefined && !CATEGORIES.some(c => c.name === String(f.category).trim()) ||
+          f.source !== undefined && !String(f.source).trim()))
+        return { success: false, error: 'Tanggal, nominal, kategori, dan dompet transaksi tagihan wajib valid.' };
+      if (billId && f.source !== undefined) {
+        if (!Object.prototype.hasOwnProperty.call(calculateWalletBalances_().walletBalances, String(f.source).trim()))
+          return { success: false, error: 'Dompet tidak ditemukan.' };
+      }
+    }
     if (data.sheet === 'saving') {
       const old = sh.getRange(row, 1, 1, sh.getLastColumn()).getValues()[0];
       const source = String(f.source !== undefined ? f.source : old[4]).trim();
@@ -500,10 +515,16 @@ function editTransaction(data) {
       if (k === 'amount') val = Number(val);
       sh.getRange(row, idx + 1).setValue(val);
     });
+    if (data.sheet === 'expense' && f.source !== undefined && data.billId) {
+      const billSh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.BILL);
+      const bill = getSheetDataWithRowIndex_(SHEET_NAMES.BILL).find(item =>
+        String(item.row[colIndex_(billSh, 'Id')]) === String(data.billId));
+      if (bill) billSh.getRange(bill.rowIndex, colIndex_(billSh, 'Wallet') + 1).setValue(String(f.source).trim());
+    }
     invalidateCache_();
     return { success: true, msg: 'Transaksi berhasil diperbarui ✏️' };
   };
-  if (data.sheet !== 'saving') return save();
+  if (data.sheet !== 'saving' && data.sheet !== 'expense') return save();
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) throw new Error('Sistem sedang sibuk, coba lagi sebentar.');
   try { return save(); } finally { lock.releaseLock(); }
@@ -513,18 +534,31 @@ function editTransaction(data) {
  * Delete single transaction row.
  * sheet: 'income' | 'expense' | 'saving'
  */
-function deleteTransaction(sheet, rowIndex) {
+function deleteTransaction(sheet, rowIndex, expectedBillId) {
+  if (sheet === 'expense') initSheets_();
   const sheetName = sheetForKind_(sheet);
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
   if (!sh) throw new Error('Sheet tidak ditemukan: ' + sheetName);
   const row = parseInt(rowIndex, 10);
   if (!row || row < 2 || row > sh.getLastRow()) throw new Error('Index baris tidak valid');
   const remove = () => {
+    if (sheet === 'expense') {
+      const billId = String(sh.getRange(row, colIndex_(sh, 'BillId') + 1).getValue() || '');
+      if ((billId || expectedBillId) && billId !== String(expectedBillId || ''))
+        return { success: false, error: 'Transaksi tagihan berubah. Muat ulang daftar transaksi.' };
+      if (billId) {
+        const billSh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.BILL);
+        const bill = getSheetDataWithRowIndex_(SHEET_NAMES.BILL).find(item =>
+          String(item.row[colIndex_(billSh, 'Id')]) === billId);
+        // Clear first: if deleting the expense fails, readBills_ still detects its link.
+        if (bill) billSh.getRange(bill.rowIndex, colIndex_(billSh, 'PaidAt') + 1).setValue('');
+      }
+    }
     sh.deleteRow(row);
     invalidateCache_();
     return { success: true, msg: 'Transaksi berhasil dihapus 🗑️' };
   };
-  if (sheet !== 'saving') return remove();
+  if (sheet !== 'saving' && sheet !== 'expense') return remove();
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) throw new Error('Sistem sedang sibuk, coba lagi sebentar.');
   try { return remove(); } finally { lock.releaseLock(); }
@@ -791,20 +825,26 @@ function readBills_() {
   initSheets_();
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.BILL);
   const idx = name => colIndex_(sh, name);
+  const expenseSh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.EXPENSE);
+  const linkedIds = new Set(getSheetData_(SHEET_NAMES.EXPENSE)
+    .map(row => String(row[colIndex_(expenseSh, 'BillId')] || '')).filter(Boolean));
   const rows = getSheetDataWithRowIndex_(SHEET_NAMES.BILL);
   return rows.map(({ row, rowIndex }) => {
     const timestamp = row[idx('PaidAt')] ? new Date(row[idx('PaidAt')]) : null;
     const paidAt = timestamp && !isNaN(timestamp) ? timestamp.toISOString() : '';
+    const id = String(row[idx('Id')] || '');
+    const linkedExpense = linkedIds.has(id);
     return {
       rowIndex: rowIndex,
-      id: String(row[idx('Id')] || ''),
+      id: id,
       dueDate: toIso_(row[idx('DueDate')]),
       name: row[idx('Name')] || '',
       amount: parseFloat(row[idx('Amount')]) || 0,
       notes: row[idx('Notes')] || '',
       wallet: String(row[idx('Wallet')] || ''),
       paidAt: paidAt,
-      paid: !!paidAt
+      paid: !!paidAt || linkedExpense,
+      linkedExpense: linkedExpense
     };
   }).filter(b => b.dueDate && b.name);
 }
@@ -813,6 +853,59 @@ function validBillDate_(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const d = new Date(value + 'T12:00:00Z');
   return !isNaN(d) && d.toISOString().slice(0, 10) === value;
+}
+
+/** One expense per bill ID. Lock serializes payment, status edits, and deletion. */
+function recordBillPayment(data) {
+  initSheets_();
+  const id = String(data.id || '').trim();
+  const date = String(data.date || '');
+  const amount = Number(data.amount);
+  const category = String(data.category || '').trim();
+  const wallet = String(data.wallet || '').trim();
+  if (!id || !validBillDate_(date) || !Number.isFinite(amount) || amount <= 0 ||
+      !CATEGORIES.some(c => c.name === category) || !wallet)
+    return { success: false, error: 'Pilih tanggal, nominal positif, kategori, dan dompet yang valid.' };
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) throw new Error('Sistem sedang sibuk, coba lagi sebentar.');
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const bills = ss.getSheetByName(SHEET_NAMES.BILL);
+    const expenses = ss.getSheetByName(SHEET_NAMES.EXPENSE);
+    const bill = getSheetDataWithRowIndex_(SHEET_NAMES.BILL)
+      .find(item => String(item.row[colIndex_(bills, 'Id')]) === id);
+    if (!bill) return { success: false, error: 'Tagihan tidak ditemukan. Muat ulang data.' };
+    const linked = getSheetDataWithRowIndex_(SHEET_NAMES.EXPENSE)
+      .find(item => String(item.row[colIndex_(expenses, 'BillId')]) === id);
+    if (linked) {
+      // The expense may have been appended before a transient PaidAt write failure.
+      if (!bill.row[colIndex_(bills, 'PaidAt')])
+        bills.getRange(bill.rowIndex, colIndex_(bills, 'PaidAt') + 1).setValue(new Date());
+      const paidWallet = String(linked.row[colIndex_(expenses, 'Source')] || '');
+      if (paidWallet && String(bill.row[colIndex_(bills, 'Wallet')] || '') !== paidWallet)
+        bills.getRange(bill.rowIndex, colIndex_(bills, 'Wallet') + 1).setValue(paidWallet);
+      invalidateCache_();
+      return { success: true, alreadyRecorded: true, msg: 'Pembayaran tagihan sudah tercatat. Tidak dibuat transaksi ganda.' };
+    }
+    if (bill.row[colIndex_(bills, 'PaidAt')])
+      return { success: false, error: 'Tagihan sudah ditandai lunas tanpa transaksi tertaut. Periksa riwayat pengeluaran sebelum mencatat pembayaran baru.' };
+    if (!Object.prototype.hasOwnProperty.call(calculateWalletBalances_().walletBalances, wallet))
+      return { success: false, error: 'Dompet tidak ditemukan.' };
+    const subcategory = String(data.subcategory || '').trim();
+    if (subcategory && !CATEGORIES.find(c => c.name === category).subcategories.includes(subcategory))
+      return { success: false, error: 'Subkategori tidak cocok dengan kategori.' };
+    const row = new Array(expenses.getLastColumn()).fill('');
+    const set = (name, value) => { row[colIndex_(expenses, name)] = value; };
+    set('Date', date); set('Category', category); set('Subcategory', subcategory);
+    set('Amount', amount); set('Notes', String(data.notes || ''));
+    set('Source', wallet); set('BillId', id);
+    expenses.appendRow(row);
+    // An append followed by a failed status write is safely recoverable on retry.
+    bills.getRange(bill.rowIndex, colIndex_(bills, 'PaidAt') + 1).setValue(new Date());
+    bills.getRange(bill.rowIndex, colIndex_(bills, 'Wallet') + 1).setValue(wallet);
+    invalidateCache_();
+    return { success: true, msg: 'Tagihan lunas dan satu pengeluaran tercatat.' };
+  } finally { lock.releaseLock(); }
 }
 
 function listBills(month, year) {
@@ -859,12 +952,23 @@ function addBill(data) {
 
 function updateBill(data) {
   initSheets_();
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) throw new Error('Sistem sedang sibuk, coba lagi sebentar.');
+  try { return updateBillLocked_(data); } finally { lock.releaseLock(); }
+}
+
+function updateBillLocked_(data) {
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.BILL);
   const idIdx = colIndex_(sh, 'Id');
   const id = String(data.id || '');
   const rows = getSheetDataWithRowIndex_(SHEET_NAMES.BILL);
   const found = rows.find(item => String(item.row[idIdx]) === id && id);
   if (!found) return { success: false, error: 'Tagihan tidak ditemukan. Muat ulang data.' };
+  if (data.paid === false) {
+    const expenseSh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.EXPENSE);
+    if (getSheetData_(SHEET_NAMES.EXPENSE).some(r => String(r[colIndex_(expenseSh, 'BillId')]) === id))
+      return { success: false, error: 'Pengeluaran pembayaran masih tertaut. Hapus transaksi tersebut untuk membatalkan pelunasan.' };
+  }
   const row = found.rowIndex;
   const fields = {};
   if (data.name !== undefined) {
@@ -899,6 +1003,12 @@ function updateBill(data) {
 
 function deleteBill(rowIndex, id) {
   initSheets_();
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) throw new Error('Sistem sedang sibuk, coba lagi sebentar.');
+  try { return deleteBillLocked_(rowIndex, id); } finally { lock.releaseLock(); }
+}
+
+function deleteBillLocked_(rowIndex, id) {
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.BILL);
   if (!sh) throw new Error('Sheet Bills tidak ditemukan');
   let row = parseInt(rowIndex, 10);
@@ -909,6 +1019,10 @@ function deleteBill(rowIndex, id) {
     row = found ? found.rowIndex : 0;
   }
   if (!row || row < 2 || row > sh.getLastRow()) throw new Error('Tagihan tidak ditemukan. Muat ulang data.');
+  const billId = String(sh.getRange(row, colIndex_(sh, 'Id') + 1).getValue() || '');
+  const expenseSh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.EXPENSE);
+  if (billId && getSheetData_(SHEET_NAMES.EXPENSE).some(r => String(r[colIndex_(expenseSh, 'BillId')]) === billId))
+    return { success: false, error: 'Hapus transaksi pembayaran yang tertaut sebelum menghapus tagihan.' };
   sh.deleteRow(row);
   invalidateCache_();
   return { success: true, msg: 'Tagihan dihapus 🗑️' };
@@ -1495,7 +1609,8 @@ function getDashboardData(month, year, options) {
       notes: b.notes,
       id: b.id,
       wallet: b.wallet,
-      paid: b.paid
+      paid: b.paid,
+      linkedExpense: b.linkedExpense
     });
   });
   // Hitung total per hari
@@ -1848,6 +1963,8 @@ function listRecentTransactions(month, year, limit) {
   const expRows = getSheetDataWithRowIndex_(SHEET_NAMES.EXPENSE);
   const savRows = getSheetDataWithRowIndex_(SHEET_NAMES.SAVING);
   const savingsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.SAVING);
+  const expenseSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.EXPENSE);
+  const billIdIdx = colIndex_(expenseSheet, 'BillId');
   const destinationIdx = colIndex_(savingsSheet, 'Destination');
   const goalIdIdx = colIndex_(savingsSheet, 'GoalId');
 
@@ -1885,7 +2002,8 @@ function listRecentTransactions(month, year, limit) {
       subcategory: row[2] || '',
       amount: parseFloat(row[3]) || 0,
       notes: row[4] || '',
-      source: row[5] || ''
+      source: row[5] || '',
+      billId: row[billIdIdx] || ''
     });
   });
 
