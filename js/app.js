@@ -37,6 +37,7 @@
   let prioritiesGoalsFresh = false;
   let prioritiesGoalsReady = false;
   let prioritiesDashboardPeriod = null;
+  let billEditingId = '';
   let scenarioTouched = false;
   let scenarioBaseline = null;
 
@@ -347,7 +348,7 @@
     $('btnSaveTemplate').addEventListener('click', saveCurrentAsTemplate);
 
     // Bill Calendar
-    $('btnAddBill').addEventListener('click', openBillModal);
+    $('btnAddBill').addEventListener('click', () => openBillModal(null));
     $('btnSubmitBill').addEventListener('click', submitBill);
     $('btnCloseCalDetail').addEventListener('click', () => { $('calendarDetail').hidden = true; });
 
@@ -600,7 +601,7 @@
     renderNetWorth(d.netWorth, d.ratios);
     renderForecast(d.forecast, d.sixMonths, d.burn);
     renderScenarioPlanner(d);
-    renderSubscriptions(d.subscriptions || [], d.upcomingBills || []);
+    renderSubscriptions(d.subscriptions || [], d.upcomingBills || [], d.manualBills || []);
     renderSixMonths(d.sixMonths);
     updateBudgetRuleLabels(d.budgeting);
     updateWalletPills(d.walletBalances || {});
@@ -636,7 +637,7 @@
       month: state.currentMonth, year: state.currentYear, now });
     if (!items.length) {
       el.innerHTML = `<div class="card priority-empty">${prioritiesGoalsFresh
-        ? 'Belum ada tagihan dalam 7 hari, anggaran terpakai ≥90%, atau tujuan di bawah jadwal berdasarkan data terbaru.'
+        ? 'Belum ada tagihan dekat yang belum lunas, anggaran terpakai ≥90%, atau tujuan di bawah jadwal berdasarkan data terbaru.'
         : 'Belum ada tagihan dekat atau anggaran hampir habis. Data tujuan gagal dimuat; coba refresh.'}</div>`;
       return;
     }
@@ -647,12 +648,12 @@
       if (a.type === 'bill') {
         kind = '📅 TAGIHAN';
         const source = a.wallet && Object.prototype.hasOwnProperty.call(state.dashboard.walletBalances || {}, a.wallet)
-          ? `Dompet pembayaran sebelumnya: ${escapeHtml(a.wallet)} · saldo ${fmtRp(state.dashboard.walletBalances[a.wallet])}. Cek sebelum membayar.`
+          ? `${a.predicted ? 'Dompet pembayaran sebelumnya' : 'Dompet yang dipilih'}: ${escapeHtml(a.wallet)} · saldo ${fmtRp(state.dashboard.walletBalances[a.wallet])}. Cek sebelum membayar.`
           : 'Dompet pembayaran belum tercatat. Pilih dan cek saldo dompet yang akan digunakan.';
-        detail = `${a.predicted ? 'Perkiraan ' : ''}jatuh tempo ${dateLabel(a.date)} · ${fmtRp(a.amount)}<br>${source}`;
+        detail = `${a.daysLeft < 0 ? `Terlambat ${-a.daysLeft} hari · ` : a.predicted ? 'Perkiraan ' : ''}jatuh tempo ${dateLabel(a.date)} · ${fmtRp(a.amount)}<br>${source}`;
         why = a.predicted
           ? `Pola transaksi sebelumnya menunjukkan perkiraan ${a.daysLeft} hari lagi. Rata-rata nominal ${fmtRp(a.amount)} dari ${a.occurrences || 'beberapa'} bulan tercatat. Tanggal dan nominal bisa berbeda dari tagihan sebenarnya.`
-          : `Tagihan manual dijadwalkan ${a.daysLeft} hari lagi pada ${dateLabel(a.date)}, nominal ${fmtRp(a.amount)}. Status pembayarannya belum tercatat di daftar tagihan; periksa sebelum membayar lagi.`;
+          : `Tagihan manual ${a.daysLeft < 0 ? 'melewati tenggat ' + (-a.daysLeft) + ' hari' : 'dijadwalkan ' + a.daysLeft + ' hari lagi'} pada ${dateLabel(a.date)}, nominal ${fmtRp(a.amount)}. Status belum lunas menurut daftar tagihan. Menandai lunas tidak mencatat transaksi pengeluaran.`;
       } else if (a.type === 'budget') {
         kind = '📊 ANGGARAN';
         detail = `${a.remaining < 0 ? 'Melebihi plafon ' + fmtRp(-a.remaining) : 'Sisa ' + fmtRp(a.remaining)} · ${a.daysRemaining} hari termasuk hari ini`;
@@ -668,9 +669,14 @@
         <div class="priority-head"><span class="priority-kind">${kind}</span><span class="priority-rank">Prioritas ${i + 1}</span></div>
         <h3 class="priority-title">${escapeHtml(a.title)}</h3>
         <div class="priority-detail">${detail}</div>
+        ${a.type === 'bill' && !a.predicted && a.id ? `<button type="button" class="btn-pill priority-manage" data-priority-bill="${escapeHtml(a.id)}">Kelola tagihan</button>` : ''}
         <details class="priority-why"><summary>Kenapa disarankan?</summary><p>${why}</p></details>
       </article>`;
     }).join('');
+    el.querySelectorAll('[data-priority-bill]').forEach(button => button.addEventListener('click', () => {
+      const bill = (state.dashboard.manualBills || []).find(b => b.id === button.dataset.priorityBill);
+      if (bill) openBillModal(bill);
+    }));
   }
 
   // ── Summary ──
@@ -1234,21 +1240,29 @@
   }
 
   // ── Subscriptions & Upcoming ──
-  function renderSubscriptions(subs, upcoming) {
+  function renderSubscriptions(subs, upcoming, manualBills) {
     const upEl = $('upcomingList');
-    if (!upcoming.length) {
+    const manualUpcoming = manualBills.filter(b => {
+      const left = b.dueDate ? daysFromToday(b.dueDate) : null;
+      return !b.paid && left != null && left >= 0 && left <= 7 && Number(b.amount) > 0;
+    }).map(b => ({ ...b, daysLeft: daysFromToday(b.dueDate), nextDate: b.dueDate, manual: true }));
+    const manualKeys = new Set(manualBills.map(b => `${b.dueDate}|${String(b.name).trim().toLowerCase()}`));
+    const combined = manualUpcoming.concat(upcoming.filter(b => !manualKeys.has(
+      `${b.nextDate}|${String(b.name).trim().toLowerCase()}`)))
+      .sort((a, b) => a.daysLeft - b.daysLeft || String(a.name).localeCompare(String(b.name), 'id'));
+    if (!combined.length) {
       upEl.innerHTML = '<div class="empty-state">✅ Tidak ada tagihan dekat</div>';
     } else {
-      upEl.innerHTML = upcoming.map(b => {
+      upEl.innerHTML = combined.map(b => {
         const urg = b.daysLeft <= 1;
         return `
           <div class="upcoming-row ${urg ? 'urgent' : ''}">
             <div>
               <div class="upcoming-row-name">${escapeHtml(b.name)}</div>
-              <div class="upcoming-row-meta">Jatuh tempo: ${escapeHtml(b.nextDateLabel || b.date || '')}</div>
+              <div class="upcoming-row-meta">${b.manual ? 'Tagihan manual' : 'Perkiraan'} · Jatuh tempo: ${escapeHtml(b.manual ? fmtDateShort(b.dueDate) : b.nextDateLabel || b.date || '')}${b.wallet ? ' · ' + escapeHtml(b.wallet) : ''}</div>
             </div>
             <div>
-              <div class="upcoming-row-amt">${fmtRpShort(b.amount || b.lastAmount)}</div>
+              <div class="upcoming-row-amt">${fmtRpShort(b.manual ? b.amount : b.avgAmount || b.lastAmount)}</div>
               <div class="sub-row-amt-sub">${b.daysLeft <= 0 ? 'HARI INI!' : b.daysLeft + ' hari lagi'}</div>
             </div>
           </div>
@@ -2462,7 +2476,7 @@
       const isPast = todayDate > 0 && d.day < todayDate;
       const isToday = d.day === todayDate;
       const dots = (d.items || []).slice(0, 4).map(it => {
-        const cls = it.type === 'subscription' ? (it.paid ? 'subscription paid' : 'subscription') : 'manual';
+        const cls = it.type === 'subscription' ? (it.paid ? 'subscription paid' : 'subscription') : (it.paid ? 'manual paid' : 'manual');
         return `<span class="cal-dot ${cls}" title="${escapeHtml(it.name)}"></span>`;
       }).join('');
       const moreDot = (d.items || []).length > 4 ? `<span class="cal-dot" title="+${(d.items||[]).length - 4} lagi"></span>` : '';
@@ -2499,17 +2513,22 @@
           ? `<span class="cal-tag subscription">Langganan</span>`
           : `<span class="cal-tag manual">Manual</span>`;
         const paid = it.paid ? `<span class="cal-tag paid">Dibayar</span>` : '';
-        const delBtn = it.type === 'manual' && it.rowIndex
-          ? `<button class="icon-btn" data-bill-del="${it.rowIndex}" title="Hapus tagihan" aria-label="Hapus">🗑️</button>`
+        const delBtn = it.type === 'manual' && (it.id || it.rowIndex)
+          ? `<button type="button" class="icon-btn" data-bill-del="${escapeHtml(it.id || String(it.rowIndex))}" title="Hapus tagihan" aria-label="Hapus">🗑️</button>`
           : '';
+        const controls = it.type === 'manual' && it.id
+          ? `<button type="button" class="btn-pill" data-bill-edit="${escapeHtml(it.id)}">Edit</button>
+             <button type="button" class="btn-pill" data-bill-paid="${escapeHtml(it.id)}">${it.paid ? 'Batalkan lunas' : 'Tandai lunas'}</button>` : '';
         return `
           <div class="cal-detail-item">
             <div>
               <div class="cal-detail-item-name">${tag}${paid}${escapeHtml(it.name)}</div>
+              ${it.wallet ? `<div class="cal-detail-item-meta">Dompet: ${escapeHtml(it.wallet)}</div>` : ''}
               ${it.notes ? `<div class="cal-detail-item-meta">${escapeHtml(it.notes)}</div>` : ''}
             </div>
-            <div style="display:flex;align-items:center;gap:8px;">
+            <div class="cal-detail-actions">
               <span class="cal-detail-item-amt ${it.paid ? 'paid' : ''}">${fmtRp(it.amount || 0)}</span>
+              ${controls}
               ${delBtn}
             </div>
           </div>
@@ -2522,8 +2541,10 @@
             title: 'Hapus Tagihan', danger: true, okLabel: 'Hapus', icon: '📅'
           });
           if (!ok) return;
-          const ri = parseInt(btn.dataset.billDel, 10);
-          const res = await api.deleteBill(ri);
+          const key = btn.dataset.billDel;
+          const bill = d.items.find(item => item.id === key || String(item.rowIndex) === key);
+          if (!bill) return showToast('Tagihan berubah. Muat ulang data.', 'error');
+          const res = await api.deleteBill(bill.id || bill.rowIndex);
           if (res.success) {
             showToast(res.msg || 'Tagihan dihapus', 'success');
             $('calendarDetail').hidden = true;
@@ -2534,19 +2555,45 @@
           }
         });
       });
+      wrap.querySelectorAll('[data-bill-edit]').forEach(button => button.addEventListener('click', () => {
+        const bill = d.items.find(item => item.id === button.dataset.billEdit);
+        if (bill) openBillModal({ ...bill, dueDate: `${cal.year}-${String(cal.month).padStart(2, '0')}-${String(day).padStart(2, '0')}` });
+      }));
+      wrap.querySelectorAll('[data-bill-paid]').forEach(button => button.addEventListener('click', async () => {
+        const bill = d.items.find(item => item.id === button.dataset.billPaid);
+        if (!bill) return;
+        button.disabled = true;
+        try {
+          const res = await api.updateBill({ id: bill.id, paid: !bill.paid });
+          if (!res.success) return showToast('Gagal: ' + (res.error || 'unknown'), 'error');
+          showToast(bill.paid ? 'Status lunas dibatalkan' : 'Tagihan ditandai lunas. Catat pengeluaran secara terpisah.', 'success');
+          $('calendarDetail').hidden = true;
+          store.invalidateAllCache();
+          await loadDashboard();
+        } finally { button.disabled = false; }
+      }));
     }
     $('calendarDetail').hidden = false;
     $('calendarDetail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
-  function openBillModal() {
-    $('billName').value = '';
-    $('billAmount').value = '';
-    $('billNotes').value = '';
-    // default tanggal = akhir bulan ini
-    const last = new Date(state.currentYear, state.currentMonth, 0);
-    const iso = last.toISOString().split('T')[0];
-    $('billDate').value = iso;
+  function openBillModal(bill) {
+    billEditingId = bill && bill.id ? bill.id : '';
+    $('billModalTitle').textContent = billEditingId ? '✏️ Edit Tagihan Manual' : '📅 Tambah Tagihan Manual';
+    $('btnSubmitBill').textContent = billEditingId ? 'Simpan Perubahan' : 'Simpan Tagihan 📅';
+    $('billName').value = bill && bill.name || '';
+    $('billAmount').value = bill && bill.amount ? Number(bill.amount).toLocaleString('id-ID') : '';
+    $('billNotes').value = bill && bill.notes || '';
+    $('billPaid').checked = !!(bill && bill.paid);
+    const select = $('billWallet');
+    select.replaceChildren(new Option('Belum ditentukan', ''));
+    Object.keys(state.wallets || {}).sort((a, b) => a.localeCompare(b, 'id')).forEach(name => {
+      select.add(new Option(name + ' · ' + fmtRp(state.wallets[name]), name));
+    });
+    select.value = bill && bill.wallet || '';
+    const today = new Date();
+    const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    $('billDate').value = bill && bill.dueDate || todayIso;
     setupCurrencyMasks();
     openModal('billModalOverlay');
     setTimeout(() => $('billName').focus(), 200);
@@ -2557,17 +2604,20 @@
       name: $('billName').value.trim(),
       dueDate: $('billDate').value,
       amount: parseRp($('billAmount').value),
-      notes: $('billNotes').value.trim()
+      notes: $('billNotes').value.trim(),
+      wallet: $('billWallet').value,
+      paid: $('billPaid').checked
     };
-    if (!data.name || !data.dueDate) {
-      showToast('Lengkapi nama & tanggal jatuh tempo!', 'error');
+    if (!data.name || !data.dueDate || data.amount <= 0) {
+      showToast('Lengkapi nama, tanggal, dan jumlah tagihan positif!', 'error');
       return;
     }
     await submitWithGuard(async () => {
-      const res = await api.addBill(data);
+      const res = billEditingId ? await api.updateBill({ ...data, id: billEditingId }) : await api.addBill(data);
       if (res.success) {
-        showToast(res.msg || 'Tagihan tersimpan', 'success');
+        showToast(res.msg || 'Tagihan tersimpan; catat pengeluaran secara terpisah.', 'success');
         closeModal('billModalOverlay');
+        $('calendarDetail').hidden = true;
         store.invalidateAllCache();
         loadDashboard();
       } else {

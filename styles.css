@@ -1599,6 +1599,16 @@ select.form-input {
 .cal-dot.subscription { background: var(--indigo); }
 .cal-dot.subscription.paid { background: var(--green); }
 .cal-dot.manual { background: var(--amber); }
+.cal-dot.manual.paid { background: var(--green); }
+.bill-paid-label { display: flex; align-items: center; gap: 8px; margin: 12px 0 6px; cursor: pointer; }
+.bill-paid-label input { width: auto; }
+.cal-detail-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.cal-detail-actions .btn-pill { font-size: 11px; padding: 5px 9px; }
+.priority-manage { margin-top: 12px; font-size: 11px; }
+@media (max-width: 480px) {
+  .cal-detail-item { align-items: flex-start; flex-direction: column; }
+  .cal-detail-actions { justify-content: flex-start; width: 100%; }
+}
 
 .calendar-detail {
   margin-top: 14px;

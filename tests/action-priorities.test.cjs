@@ -5,31 +5,62 @@ const { prioritize } = require('../js/action-priorities.js');
 const now = new Date('2026-09-25T19:59:00+07:00');
 const ctx = (dashboard, goals = []) => ({ dashboard, goals, month: 9, year: 2026, now });
 
-test('ranks no more than three distinct actions with evidence for bills, budgets and behind goals', () => {
+test('ranks the three most urgent actions, including two bills when both are due soon', () => {
   const result = prioritize(ctx({
     manualBills: [{ name: 'Listrik', dueDate: '2026-09-26', amount: 350000 },
       { name: 'Air', dueDate: '2026-09-27', amount: 80000 }],
     categoryBudgets: [{ name: 'Makan', budget: 1000000, spent: 950000 }]
   }, [{ name: 'Laptop', date: '2026-09-01', deadline: '2026-12-31', target: 4000000, saved: 0 }]));
-  assert.deepEqual(result.map(x => x.type), ['bill', 'budget', 'goal']);
+  assert.deepEqual(result.map(x => x.type), ['bill', 'bill', 'budget']);
   assert.equal(result[0].date, '2026-09-26');
   assert.equal(result[0].daysLeft, 1);
-  assert.equal(result[1].remaining, 50000);
-  assert.equal(result[1].daysRemaining, 6);
-  assert.equal(result[2].daysLeft, 97);
-  assert.equal(result[2].monthlyNeeded, Math.ceil(4000000 * 30 / 97));
-  assert.ok(result[2].gap > 0);
+  assert.equal(result[1].date, '2026-09-27');
+  assert.equal(result[2].remaining, 50000);
+  assert.equal(result[2].daysRemaining, 6);
 });
 
-test('does not claim historical or invalid bill dates are due; respects current month', () => {
+test('flags only recently overdue bills, ignores invalid dates and other dashboard months', () => {
   const dashboard = { manualBills: [
     { name: 'Lewat', dueDate: '2026-09-24', amount: 100000 },
     { name: 'Tak valid', dueDate: '2026-09-31', amount: 100000 },
     { name: 'Hari ini', dueDate: '2026-09-25', amount: 90000 },
     { name: 'Jauh', dueDate: '2026-10-04', amount: 80000 }
   ] };
-  assert.deepEqual(prioritize(ctx(dashboard)).map(x => x.title), ['Cek tagihan Hari ini']);
+  assert.deepEqual(prioritize(ctx(dashboard)).map(x => x.title),
+    ['Tindak lanjuti tagihan Lewat', 'Cek tagihan Hari ini']);
   assert.deepEqual(prioritize({ ...ctx(dashboard), month: 8 }), []);
+});
+
+test('manual paid bill disappears, and duplicate subscription prediction is suppressed', () => {
+  const result = prioritize(ctx({
+    manualBills: [
+      { id: 'paid-1', name: 'Listrik', dueDate: '2026-09-25', amount: 200000, paid: true },
+      { id: 'open-1', name: 'Internet', dueDate: '2026-10-01', amount: 150000, wallet: 'BRI' }
+    ],
+    upcomingBills: [
+      { name: ' internet ', nextDate: '2026-10-01', avgAmount: 160000, paidThisMonth: false },
+      { name: 'Listrik', nextDate: '2026-09-25', avgAmount: 200000, paidThisMonth: false }
+    ]
+  }));
+  assert.equal(result.length, 1);
+  assert.equal(result[0].id, 'open-1');
+  assert.equal(result[0].wallet, 'BRI');
+  assert.equal(result[0].daysLeft, 6);
+});
+
+test('a paid September subscription can still have a new estimated October due date', () => {
+  const result = prioritize(ctx({ upcomingBills: [{ name: 'Internet', nextDate: '2026-10-01',
+    avgAmount: 120000, paidThisMonth: true, paidForNextDate: false }] }));
+  assert.equal(result.length, 1);
+  assert.equal(result[0].date, '2026-10-01');
+});
+
+test('goal calculations still surface when fewer than three nearer actions exist', () => {
+  const [goal] = prioritize(ctx({}, [{ name: 'Laptop', date: '2026-09-01',
+    deadline: '2026-12-31', target: 4000000, saved: 0 }]));
+  assert.equal(goal.type, 'goal');
+  assert.equal(goal.daysLeft, 97);
+  assert.equal(goal.monthlyNeeded, Math.ceil(4000000 * 30 / 97));
 });
 
 test('subscription estimates require future date, positive amount, and unpaid status', () => {

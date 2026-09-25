@@ -593,6 +593,7 @@
             <div class="cal-stat-val" id="calDaysLeft">0</div>
           </div>
         </div>
+        <p class="muted micro-label">Status lunas mengatur pengingat tagihan. Catat pengeluaran secara terpisah agar saldo dan arus kas akurat.</p>
         <div class="calendar-weekdays">
           <span>Min</span><span>Sen</span><span>Sel</span><span>Rab</span><span>Kam</span><span>Jum</span><span>Sab</span>
         </div>
@@ -1173,7 +1174,7 @@
             <input type="date" class="form-input" id="billDate" />
           </div>
           <div class="form-group">
-            <label class="form-label" for="billAmount">Jumlah (Rp)</label>
+            <label class="form-label" for="billAmount">Jumlah (Rp) *</label>
             <div class="amount-input-wrap">
               <span class="amount-prefix">Rp</span>
               <input type="text" inputmode="numeric" class="form-input currency-mask" id="billAmount" placeholder="0" />
@@ -1182,10 +1183,20 @@
         </div>
         <div class="form-row single mb-14">
           <div class="form-group">
+            <label class="form-label" for="billWallet">Dompet untuk tagihan</label>
+            <select class="form-input" id="billWallet"><option value="">Belum ditentukan</option></select>
+          </div>
+        </div>
+        <div class="form-row single mb-14">
+          <div class="form-group">
             <label class="form-label" for="billNotes">Catatan</label>
             <input type="text" class="form-input" id="billNotes" placeholder="Opsional…" />
           </div>
         </div>
+        <label class="form-label bill-paid-label" for="billPaid">
+          <input type="checkbox" id="billPaid" /> Sudah lunas
+        </label>
+        <p class="muted micro-label">Status lunas tidak mengurangi saldo. Catat pengeluaran terpisah agar arus kas tercatat.</p>
         <button class="btn-submit" id="btnSubmitBill">Simpan Tagihan 📅</button>
       </div>
     </div>

@@ -175,3 +175,24 @@ Hasilnya adalah contoh berdasarkan asumsi, bukan jaminan atau instruksi transaks
 Fitur ini hanya mengubah berkas frontend (`index.html`, `styles.css`,
 `js/*.js`, `sw.js`); jika backend dari tahap sebelumnya sudah aktif, tidak
 perlu memperbarui `Code.gs` untuk memakai simulasi.
+
+## 📅 Tagihan Terverifikasi dan Prioritas Lintas Bulan
+
+Untuk pembaruan ini, salin `Code.gs` terbaru ke Apps Script dan terbitkan
+**New version** pada deployment yang dipakai aplikasi **sebelum** merge
+frontend. Sheet `Bills` otomatis mendapat kolom `Wallet`, `PaidAt`, dan `Id`
+di sebelah kanan kolom lama. Tagihan lama tetap ada, memperoleh ID, dan
+awalnya dianggap belum lunas; tidak ada tanggal pembayaran yang ditebak.
+Periksa tanggal, nominal, dan dompet tagihan lama yang belum lengkap.
+
+Saat membuat atau mengedit tagihan manual, Anda dapat memilih dompet dan
+menandainya lunas. Di kalender, tombol **Tandai lunas** dan **Batalkan lunas**
+memperbarui status pengingat. Status ini **tidak** membuat transaksi dan tidak
+mengurangi saldo; catat pengeluaran yang benar lewat form Transaksi. Tagihan
+yang sudah lunas tidak masuk komitmen tersisa dan prioritas. Tagihan manual
+yang jatuh tempo dalam tujuh hari akan tampil meskipun tanggalnya masuk bulan
+berikutnya. Tagihan sampai tujuh hari terlambat masih dapat ditindaklanjuti.
+Jika tanggal dan nama prediksi langganan cocok dengan tagihan manual, aplikasi
+memakai tagihan manual agar jumlahnya tidak terhitung dua kali. Dashboard
+menampilkan hingga tiga tindakan paling mendesak, termasuk beberapa tagihan
+jika memang itu yang paling mendesak.

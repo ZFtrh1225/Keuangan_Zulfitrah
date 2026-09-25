@@ -132,6 +132,7 @@
   const addGoalDeposit = (rowIndex, amount) => call('addGoalDeposit', { rowIndex, amount });
   const addTemplate = (data) => call('addTemplate', data);
   const addBill = (data) => call('addBill', data);
+  const updateBill = (data) => call('updateBill', data);
   const addWallet = (data) => call('addWallet', data);
   const recordWalletReconciliation = (data) => call('recordWalletReconciliation', data);
   const applyWalletAdjustment = (id, notes) => call('applyWalletAdjustment', { id, notes });
@@ -152,7 +153,8 @@
   const deleteWealthItem = (type, rowIndex) => call('deleteWealthItem', { type, rowIndex });
   const deleteGoal = (rowIndex) => call('deleteGoal', { rowIndex });
   const deleteTemplate = (rowIndex) => call('deleteTemplate', { rowIndex });
-  const deleteBill = (rowIndex) => call('deleteBill', { rowIndex });
+  const deleteBill = (rowIndexOrId) => call('deleteBill', typeof rowIndexOrId === 'string'
+    ? { id: rowIndexOrId } : { rowIndex: rowIndexOrId });
   const deleteWallet = (rowIndex) => call('deleteWallet', { rowIndex });
   const deleteTransfer = (rowIndex) => call('deleteTransfer', { rowIndex });
 
@@ -171,7 +173,7 @@
     getDashboardData, listRecentTransactions, listGoals, getSettings, getCategories,
     listTemplates, listBills, listWallets, listWalletReconciliations, listNetWorthSnapshots, listTransfers, getAuthStatus,
     addIncome, addExpense, addSaving, addAsset, addDebt, addGoal, addGoalDeposit,
-    addTemplate, addBill, addWallet, addTransfer, recordWalletReconciliation, applyWalletAdjustment,
+    addTemplate, addBill, updateBill, addWallet, addTransfer, recordWalletReconciliation, applyWalletAdjustment,
     recordNetWorthSnapshot,
     editTransaction, updateGoal, updateDebt, updateWallet, saveSettings, saveAppSecret,
     deleteTransaction, deleteWealthItem, deleteGoal, deleteTemplate, deleteBill,
