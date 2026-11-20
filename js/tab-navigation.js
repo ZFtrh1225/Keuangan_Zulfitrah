@@ -60,6 +60,14 @@
           const chart = MT.charts && MT.charts._instances && MT.charts._instances[canvasId];
           if (chart && typeof chart.resize === 'function') chart.resize();
         });
+        if (tabId === 'tab-analytics') {
+          if (MT.cashflow && typeof MT.cashflow.resize === 'function') MT.cashflow.resize();
+          if (MT.spending && typeof MT.spending.resize === 'function') MT.spending.resize();
+          if (MT.moneyFlow && typeof MT.moneyFlow.resize === 'function') MT.moneyFlow.resize();
+        }
+        if (tabId === 'tab-planning') {
+          if (MT.planFeatures && typeof MT.planFeatures.resize === 'function') MT.planFeatures.resize();
+        }
         window.dispatchEvent(new CustomEvent('mt:tab-shown', { detail: { tabId } }));
       });
     }

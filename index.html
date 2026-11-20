@@ -24,6 +24,10 @@
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
 
+  <!-- D3.js & D3-Sankey for Cashflow & Spending Features -->
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3-sankey@0.12.3/dist/d3-sankey.min.js" defer></script>
+
   <!-- Styles -->
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -185,22 +189,86 @@
           </div>
         </div>
       </div>
-<!-- ═══════════════ Daily Chart + AI ═══════════════ -->
+<!-- ═══════════════ 1. Fitur Cashflow (Sankey Flow Chart) ═══════════════ -->
     <section class="fadeUp">
-      <div class="section-title">📈 Analisis Harian & AI Insight</div>
-      <div class="charts-row">
-        <div class="card">
-          <div class="chart-header">
-            <div>
-              <div class="chart-title">Pengeluaran Harian</div>
-              <div class="chart-subtitle" id="chartSubtitle">Distribusi pengeluaran per hari bulan ini</div>
+      <div class="section-title">🌊 Arus Kas Keuangan (Cashflow)</div>
+      <div class="card cashflow-card">
+        <div class="cf-header">
+          <div class="cf-title-wrap">
+            <div class="chart-title">Visualisasi Alur Kas</div>
+            <div class="chart-subtitle">Pemasukan &rarr; Arus Kas/Dompet &rarr; Alokasi Pengeluaran, Tabungan &amp; Surplus</div>
+          </div>
+          <div class="cf-actions">
+            <div class="cf-mode-toggle" role="group" aria-label="Mode Tampilan Arus Kas">
+              <button type="button" class="cf-mode-btn active" data-cf-mode="category">Kategori</button>
+              <button type="button" class="cf-mode-btn" data-cf-mode="wallet">Dompet</button>
             </div>
+            <button type="button" class="btn-pill" id="btnCashflowZoom" aria-label="Perbesar diagram arus kas">🔍 Perbesar</button>
+          </div>
+        </div>
+
+        <div class="cf-stats-strip">
+          <div class="cf-stat-item">
+            <span class="cf-stat-lbl">Total Pemasukan</span>
+            <span class="cf-stat-val income" id="cfTotalIncome">Rp 0</span>
+          </div>
+          <div class="cf-stat-item">
+            <span class="cf-stat-lbl">Total Pengeluaran</span>
+            <span class="cf-stat-val expense" id="cfTotalExpense">Rp 0</span>
+          </div>
+          <div class="cf-stat-item">
+            <span class="cf-stat-lbl">Saldo Kas Bersih</span>
+            <span class="cf-stat-val" id="cfNetBalance">Rp 0</span>
+          </div>
+        </div>
+
+        <div id="cashflowSankeyWrap" class="sankey-container-wrap" aria-label="Diagram Sankey Arus Kas"></div>
+      </div>
+    </section>
+
+<!-- ═══════════════ 2. Fitur Spending (Tren Pengeluaran Kumulatif) ═══════════════ -->
+    <section class="fadeUp">
+      <div class="section-title">📈 Tren Pengeluaran Kumulatif (Spending Trend)</div>
+      <div class="charts-row">
+        <div class="card spending-card">
+          <div class="spending-header">
             <div>
-              <div class="chart-stat" id="peakDay">—</div>
-              <div class="chart-stat-label">Hari tertinggi</div>
+              <div class="chart-title">Akumulasi Pengeluaran</div>
+              <div class="chart-subtitle" id="spendingDateRange">1 - 30 Hari Ini</div>
+            </div>
+            <div class="spending-controls">
+              <select id="spendingCategorySelect" class="spending-pill-select" aria-label="Filter kategori pengeluaran">
+                <option value="all">Semua Kategori</option>
+              </select>
+              <div style="text-align: right;">
+                <div class="chart-stat" id="peakDay">—</div>
+                <div class="chart-stat-label">Hari tertinggi</div>
+              </div>
             </div>
           </div>
-          <canvas id="dailyChart" height="180" aria-label="Grafik pengeluaran harian"></canvas>
+
+          <div class="spending-kpi-grid">
+            <div class="spending-kpi-box">
+              <span class="spending-kpi-bar current"></span>
+              <div class="spending-kpi-content">
+                <span class="spending-kpi-lbl">Bulan Ini (Berjalan)</span>
+                <span class="spending-kpi-val" id="spendingCurrentTotal">Rp 0</span>
+                <span class="spending-delta-badge neutral" id="spendingDelta">Memuat perbandingan…</span>
+              </div>
+            </div>
+            <div class="spending-kpi-box">
+              <span class="spending-kpi-bar previous"></span>
+              <div class="spending-kpi-content">
+                <span class="spending-kpi-lbl">Bulan Lalu <span class="muted" id="spendingPrevSub" style="font-size:10px;">(benchmark)</span></span>
+                <span class="spending-kpi-val" id="spendingPrevTotal">Rp 0</span>
+                <span class="muted micro-label" style="margin-top:4px;">Benchmark s/d tgl yang sama</span>
+              </div>
+            </div>
+          </div>
+
+          <div id="spendingChartWrap" class="spending-chart-container" aria-label="Grafik tren pengeluaran kumulatif"></div>
+          <!-- Fallback kanvas tersembunyi untuk backward-compat -->
+          <canvas id="dailyChart" height="0" style="display:none;" aria-hidden="true"></canvas>
         </div>
 
         <div class="card ai-card">
@@ -216,6 +284,54 @@
           </div>
           <button id="btnGemini" class="btn-gemini">🧠 Minta Analisis Mendalam (Gemini AI)</button>
           <div id="geminiOutput" hidden></div>
+        </div>
+      </div>
+    </section>
+
+<!-- ═══════════════ 3. Fitur Money In / Out (Arus Masuk & Keluar) ═══════════════ -->
+    <section class="fadeUp">
+      <div class="section-title">💸 Arus Masuk &amp; Keluar (Money In / Out)</div>
+      <div class="card money-flow-card">
+        <div class="money-flow-grid">
+          <div class="money-flow-chart-col">
+            <div class="money-flow-legend">
+              <div class="mf-legend-items">
+                <span class="mf-legend-item"><span class="mf-dot inc"></span> Pemasukan</span>
+                <span class="mf-legend-item"><span class="mf-dot exp"></span> Pengeluaran</span>
+              </div>
+              <span class="muted micro-label">Rentang 6 Bulan Terakhir</span>
+            </div>
+            <div id="moneyFlowChartWrap" style="width:100%; min-height:175px;" aria-label="Grafik perbandingan arus masuk dan keluar"></div>
+          </div>
+
+          <div class="money-flow-summary-col">
+            <div class="mf-selected-month-lbl" id="mfSelectedMonth">Bulan Ini</div>
+            <div class="mf-balance-box">
+              <span class="mf-balance-lbl">Sisa Kas Bersih</span>
+              <span class="mf-balance-amount" id="mfBalanceVal">Rp 0</span>
+            </div>
+            <div class="mf-flow-item">
+              <div class="mf-flow-left">
+                <span class="mf-dot inc"></span>
+                <span>Total Pemasukan</span>
+              </div>
+              <div class="mf-flow-right inc" id="mfIncomeVal">Rp 0</div>
+            </div>
+            <div class="mf-flow-item">
+              <div class="mf-flow-left">
+                <span class="mf-dot exp"></span>
+                <span>Total Pengeluaran</span>
+              </div>
+              <div class="mf-flow-right exp" id="mfExpenseVal">Rp 0</div>
+            </div>
+            <div class="mf-flow-item">
+              <div class="mf-flow-left">
+                <span class="mf-dot" style="background:var(--accent);"></span>
+                <span>Tabungan &amp; Investasi</span>
+              </div>
+              <div class="mf-flow-right sav" id="mfSavingVal">Rp 0</div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -461,6 +577,12 @@
       <div class="section-title">
         <span>🎯 Tujuan Keuangan</span>
         <button class="btn-pill" id="btnAddGoal">+ Tambah Tujuan</button>
+      </div>
+      <!-- Goals Summary Bar (Fitur Plan) -->
+      <div class="card" id="goalsPaceSummaryCard" style="margin-bottom: 14px; padding: 14px 16px;">
+        <div id="goalsPaceSummary">
+          <span class="muted micro-label">Memuat ringkasan target keuangan…</span>
+        </div>
       </div>
       <div class="goals-grid" id="goalsGrid">
         <div class="empty-state">
@@ -1723,6 +1845,25 @@
     </div>
   </div>
 
+  <!-- ═══════════════ MODAL: Zoom Cashflow Sankey ═══════════════ -->
+  <div class="modal-overlay" id="cashflowModalOverlay" role="dialog" aria-modal="true" aria-labelledby="cfModalTitle">
+    <div class="modal modal-wide" style="max-width: 950px; width: 95vw;">
+      <div class="modal-header">
+        <div class="modal-top">
+          <div class="modal-heading" id="cfModalTitle">🌊 Diagram Detail Arus Kas (Sankey Flow)</div>
+          <button class="modal-close" id="btnCloseCashflowModal" aria-label="Tutup">×</button>
+        </div>
+      </div>
+      <div class="modal-body sankey-modal-body">
+        <div class="cf-mode-toggle mb-14" style="margin-bottom:12px;">
+          <button type="button" class="cf-mode-btn active" data-cf-mode="category">Berdasarkan Kategori</button>
+          <button type="button" class="cf-mode-btn" data-cf-mode="wallet">Berdasarkan Dompet</button>
+        </div>
+        <div id="cashflowModalSankeyWrap" style="width: 100%; min-height: 480px;"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ═══════════════ MODAL: Onboarding ═══════════════ -->
   <div class="modal-overlay" id="onboardingOverlay">
     <div class="modal modal-narrow" role="dialog" aria-modal="true" aria-labelledby="onbTitle">
@@ -1766,6 +1907,10 @@
   <script src="js/api.js" defer></script>
   <script src="js/dialog.js" defer></script>
   <script src="js/charts.js" defer></script>
+  <script src="js/cashflow-sankey.js" defer></script>
+  <script src="js/spending-trend.js" defer></script>
+  <script src="js/money-flow.js" defer></script>
+  <script src="js/plan-features.js" defer></script>
   <script src="js/scenarios.js" defer></script>
   <script src="js/action-priorities.js" defer></script>
   <script src="js/inflation-calculator.js" defer></script>

@@ -1429,15 +1429,7 @@ function getDashboardData(month, year, options) {
   const savingsRate = totalInc > 0 ? (totalSav / totalInc) * 100 : 0;
   const pSavingsRate = pTotalInc > 0 ? (pTotalSav / pTotalInc) * 100 : 0;
 
-  // ── Daily expenses ──
-  const days = new Date(year, month, 0).getDate();
-  const daily = new Array(days).fill(0);
-  cExp.forEach(r => {
-    const d = new Date(r[0]).getDate();
-    if (d >= 1 && d <= days) daily[d - 1] += parseFloat(r[3]) || 0;
-  });
-
-  // ── Category breakdown ──
+  // ── Category breakdown & normalization ──
   // Helper: normalisasi nama kategori — kosong/'undefined'/'null' → 'Lain-lain'.
   // Mencegah baris lama dengan Category kosong muncul sebagai 'undefined'.
   const normCat_ = (raw) => {
@@ -1445,6 +1437,11 @@ function getDashboardData(month, year, options) {
     if (!s || s.toLowerCase() === 'undefined' || s.toLowerCase() === 'null') return 'Lain-lain';
     return s;
   };
+
+  // ── Daily expenses current & previous month (Fitur Spending Trend) ──
+  const days = new Date(year, month, 0).getDate();
+  const daily = new Array(days).fill(0);
+  const dailyByCategory = {};
   const catMap = {};
   const breakdownMap = {};
   cExp.forEach(r => {
@@ -1452,16 +1449,39 @@ function getDashboardData(month, year, options) {
     const sub = r[2] || cat;
     const amt = parseFloat(r[3]) || 0;
     const note = r[4] ? r[4].toString().trim() : '';
+    const d = new Date(r[0]).getDate();
+    if (d >= 1 && d <= days) {
+      daily[d - 1] += amt;
+      if (!dailyByCategory[cat]) dailyByCategory[cat] = new Array(days).fill(0);
+      dailyByCategory[cat][d - 1] += amt;
+    }
     catMap[cat] = (catMap[cat] || 0) + amt;
     const key = sub + '|||' + note;
     if (!breakdownMap[key]) breakdownMap[key] = { sub: sub, note: note, amount: 0 };
     breakdownMap[key].amount += amt;
   });
 
+  const pDays = new Date(py, pm, 0).getDate();
+  const pDaily = new Array(pDays).fill(0);
+  const pDailyByCategory = {};
   const pCatMap = {};
   pExp.forEach(r => {
     const cat = normCat_(r[1]);
-    pCatMap[cat] = (pCatMap[cat] || 0) + (parseFloat(r[3]) || 0);
+    const amt = parseFloat(r[3]) || 0;
+    const d = new Date(r[0]).getDate();
+    if (d >= 1 && d <= pDays) {
+      pDaily[d - 1] += amt;
+      if (!pDailyByCategory[cat]) pDailyByCategory[cat] = new Array(pDays).fill(0);
+      pDailyByCategory[cat][d - 1] += amt;
+    }
+    pCatMap[cat] = (pCatMap[cat] || 0) + amt;
+  });
+
+  // ── Income sources (Fitur Cashflow Sankey) ──
+  const incomeSources = {};
+  cInc.forEach(r => {
+    const src = (r[1] || 'Lainnya').toString().trim() || 'Lainnya';
+    incomeSources[src] = (incomeSources[src] || 0) + (parseFloat(r[2]) || 0);
   });
 
   const top21 = Object.values(breakdownMap)
@@ -1834,7 +1854,7 @@ function getDashboardData(month, year, options) {
       totalInc, totalExp, totalSav, balance, totalTx, savingsRate,
       pTotalInc, pTotalExp, pBalance, pTotalTx, pSavingsRate
     },
-    daily, top21, top10, catComp,
+    daily, pDaily, dailyByCategory, pDailyByCategory, incomeSources, top21, top10, catComp,
     budgeting,
     sixMonths,
     insights,

@@ -643,6 +643,20 @@
     renderCalendar(d.calendar || null);
     renderEnvelopeBudgets(d.categoryBudgets || []);
     renderActionPriorities();
+
+    // ── Fitur Tambahan (Cashflow Sankey, Spending Trend, Money In/Out, Plan) ──
+    if (MT.cashflow && typeof MT.cashflow.render === 'function') {
+      MT.cashflow.render(d);
+    }
+    if (MT.spending && typeof MT.spending.render === 'function') {
+      MT.spending.render(d);
+    }
+    if (MT.moneyFlow && typeof MT.moneyFlow.render === 'function') {
+      MT.moneyFlow.render(d);
+    }
+    if (MT.planFeatures && typeof MT.planFeatures.render === 'function') {
+      MT.planFeatures.render(d);
+    }
   }
 
   function renderActionPriorities() {
@@ -844,14 +858,19 @@
     });
   }
 
-  // ── Daily Chart ──
+  // ── Daily / Spending Chart ──
   function renderDailyChart(daily) {
-    if (!daily || !daily.length) return;
-    const r = charts.renderDaily('dailyChart', daily);
-    if (r && r.peakVal > 0) {
-      $('peakDay').textContent = 'Tgl ' + (r.peakIdx + 1) + ' — ' + fmtRp(r.peakVal);
-    } else {
-      $('peakDay').textContent = '—';
+    if (MT.spending && typeof MT.spending.render === 'function') {
+      MT.spending.render(state.dashboard);
+    }
+    const canvas = $('dailyChart');
+    if (canvas && canvas.offsetParent !== null && daily && daily.length) {
+      const r = charts.renderDaily('dailyChart', daily);
+      if (r && r.peakVal > 0) {
+        $('peakDay').textContent = 'Tgl ' + (r.peakIdx + 1) + ' — ' + fmtRp(r.peakVal);
+      } else {
+        $('peakDay').textContent = '—';
+      }
     }
   }
 
