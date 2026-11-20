@@ -266,3 +266,61 @@ test('Perbesar opens the visible Sankey overlay and both dismiss controls close 
     assert.equal(overlay['aria-hidden'], 'true');
   }
 });
+
+test('Sankey preview maps the monthly ledger to balanced wallet and category flows', () => {
+  const { sandbox, ss } = setupBackend();
+  sandbox.initSheets_();
+  ss.getSheetByName('Income').appendRow(['2026-11-12', 'Gaji', 5000000, '', 'Cash']);
+  ss.getSheetByName('Expenses').appendRow(['2026-11-13', 'Hunian', 'Kos', 800000, '', 'Cash']);
+  ss.getSheetByName('Expenses').appendRow(['2026-11-13', 'Makanan', 'Jajan', 152300, '', 'BCA']);
+  ss.getSheetByName('Transfers').appendRow(['2026-11-12', 'Cash', 'BCA', 170000, 0]);
+  ss.getSheetByName('Transfers').appendRow(['2026-11-13', 'BCA', 'Cash', 10000, 0]);
+  ss.getSheetByName('Expenses').appendRow(['2026-10-13', 'Hunian', 'Kos', 800000, '', 'Cash']);
+  const data = sandbox.getDashboardData(11, 2026);
+  const context = { window: {} };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'js/cashflow-preview.js'), 'utf8'), context);
+  const preview = context.window.MT.cashflowPreview;
+  for (const mode of ['category', 'wallet']) {
+    const graph = preview.buildGraph(data.cashflowEntries, mode);
+    const amount = kind => graph.nodes.filter(n => n.kind === kind).reduce((sum, n) => sum + n.value, 0);
+    assert.equal(amount('income'), 5000000);
+    assert.equal(amount('expense'), 952300);
+    assert.equal(amount('surplus'), 4047700);
+    assert.equal(amount('deficit'), 0);
+    const housing = graph.nodes.find(n => n.name === 'Hunian');
+    assert.equal(graph.details.get(housing.id).get('Kos'), 800000);
+    if (mode === 'wallet') {
+      const transfer = graph.links.find(l => graph.nodes[l.source].name === 'Cash' && graph.nodes[l.target].name === 'BCA');
+      assert.equal(transfer.value, 152300);
+    }
+  }
+  assert.equal(preview.buildGraph([], 'category').nodes.length, 0);
+});
+
+test('preview opt-in persists, handles missing data and gives the existing chart back on opt-out', () => {
+  let onChange;
+  const prefs = new Map();
+  const plot = {};
+  const panel = { classList: { contains: name => name === 'cf-preview' }, querySelector: () => plot };
+  const legacy = { nextElementSibling: panel };
+  const toggle = { addEventListener: (_, callback) => { onChange = callback; } };
+  const document = { getElementById: id => id === 'cfPreviewEnabled' ? toggle : legacy };
+  const context = { window: {}, document, localStorage: {
+    getItem: key => prefs.get(key), setItem: (key, value) => prefs.set(key, value)
+  } };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'js/cashflow-preview.js'), 'utf8'), context);
+  const preview = context.window.MT.cashflowPreview;
+  preview.init(() => preview.draw('cashflowSankeyWrap', { cashflowEntries: [] }, 'category'));
+  toggle.checked = true;
+  onChange();
+  assert.equal(legacy.hidden, true);
+  assert.equal(panel.hidden, false);
+  assert.match(plot.textContent, /Belum ada arus kas/);
+  assert.equal(prefs.get('mtpro_cf_preview_enabled'), 'true');
+  preview.draw('cashflowModalSankeyWrap', { summary: { totalInc: 100 } }, 'wallet');
+  assert.match(plot.textContent, /Code.gs/);
+  toggle.checked = false;
+  onChange();
+  assert.equal(legacy.hidden, false);
+  assert.equal(panel.hidden, true);
+});

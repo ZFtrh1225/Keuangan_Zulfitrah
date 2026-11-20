@@ -1390,7 +1390,7 @@ function getDashboardData(month, year, options) {
   month = parseInt(month);
   year = parseInt(year);
 
-  const cacheKey = year + '-' + month;
+  const cacheKey = 'flow2_' + year + '-' + month;
   const cached = options && options.fresh ? null : getCachedDashboard_(cacheKey);
   if (cached) return cached;
 
@@ -1398,6 +1398,7 @@ function getDashboardData(month, year, options) {
   const py = month === 1 ? year - 1 : year;
 
   // ── Raw sheets ──
+  const allTransfers = getSheetData_(SHEET_NAMES.TRANSFER);
   const allInc = getSheetData_(SHEET_NAMES.INCOME);
   const allExp = getSheetData_(SHEET_NAMES.EXPENSE);
   const allSav = getSheetData_(SHEET_NAMES.SAVING);
@@ -1430,14 +1431,6 @@ function getDashboardData(month, year, options) {
   const pSavingsRate = pTotalInc > 0 ? (pTotalSav / pTotalInc) * 100 : 0;
 
   // ── Category breakdown & normalization ──
-  // Helper: normalisasi nama kategori — kosong/'undefined'/'null' → 'Lain-lain'.
-  // Mencegah baris lama dengan Category kosong muncul sebagai 'undefined'.
-  const normCat_ = (raw) => {
-    const s = (raw == null ? '' : String(raw)).trim();
-    if (!s || s.toLowerCase() === 'undefined' || s.toLowerCase() === 'null') return 'Lain-lain';
-    return s;
-  };
-
   // ── Daily expenses current & previous month (Fitur Spending Trend) ──
   const days = new Date(year, month, 0).getDate();
   const daily = new Array(days).fill(0);
@@ -1599,7 +1592,7 @@ function getDashboardData(month, year, options) {
   // Source of truth untuk dompet: opening balance dari sheet Wallets +
   // semua transaksi (income/expense/saving) + transfer in/out.
   const { walletConfigs, walletMeta, walletBalances, legacySavingsCount } =
-    calculateWalletBalances_(allInc, allExp, allSav);
+    calculateWalletBalances_(allInc, allExp, allSav, allTransfers);
 
   // ── Wallet-aware liquid assets (FIX double-count) ──
   // Dulu: liquidAssets = sum(asset rows tipe Kas/Bank/E-Wallet) — sering
@@ -1854,6 +1847,8 @@ function getDashboardData(month, year, options) {
       totalInc, totalExp, totalSav, balance, totalTx, savingsRate,
       pTotalInc, pTotalExp, pBalance, pTotalTx, pSavingsRate
     },
+    cashflowEntries: cashflowEntries_(cInc, cExp, cSav,
+      filterByMonth_(allTransfers, year, month, 0)),
     daily, pDaily, dailyByCategory, pDailyByCategory, incomeSources, top21, top10, catComp,
     budgeting,
     sixMonths,
@@ -2517,9 +2512,30 @@ GAYA & ATURAN:
 
 
 
+// Helper: normalisasi nama kategori — kosong/'undefined'/'null' → 'Lain-lain'.
+// Mencegah baris lama dengan Category kosong muncul sebagai 'undefined'.
+function normCat_(raw) {
+  const s = (raw == null ? '' : String(raw)).trim();
+  if (!s || s.toLowerCase() === 'undefined' || s.toLowerCase() === 'null') return 'Lain-lain';
+  return s;
+}
+
+function cashflowEntries_(income, expenses, savings, transfers) {
+  const groups = new Map();
+  function add(kind, wallet, category, subcategory, amount) {
+    const key = JSON.stringify([kind, String(wallet || "").trim(), String(category || "").trim(), String(subcategory || "").trim()]);
+    groups.set(key, (groups.get(key) || 0) + (Number(amount) || 0));
+  }
+  income.forEach(r => add('income', r[4] || 'Cash', r[1] || 'Pemasukan', '', r[2]));
+  expenses.forEach(r => add('expense', r[5] || 'Cash', normCat_(r[1]), r[2] || '', r[3]));
+  savings.forEach(r => add('invested', r[5] ? r[4] : 'Dompet asal tidak diketahui', 'Tabungan & Investasi', '', r[2]));
+  transfers.forEach(r => add('transfer', r[1], r[2], '', r[3]));
+  return Array.from(groups, ([key, amount]) => [...JSON.parse(key), amount]);
+}
+
 // Saldo saat ini berasal dari satu perhitungan yang dipakai dashboard dan
 // pencocokan; koreksi yang disetujui masuk sekali saja melalui ledger terpisah.
-function calculateWalletBalances_(income, expenses, savings) {
+function calculateWalletBalances_(income, expenses, savings, transfers) {
   const allInc = income || getSheetData_(SHEET_NAMES.INCOME);
   const allExp = expenses || getSheetData_(SHEET_NAMES.EXPENSE);
   const allSav = savings || getSheetData_(SHEET_NAMES.SAVING);
@@ -2554,7 +2570,7 @@ function calculateWalletBalances_(income, expenses, savings) {
     walletBalances[source] = (walletBalances[source] || 0) - amount;
     if (destination) walletBalances[destination] = (walletBalances[destination] || 0) + amount;
   });
-  getSheetData_(SHEET_NAMES.TRANSFER).forEach(r => {
+  (transfers || getSheetData_(SHEET_NAMES.TRANSFER)).forEach(r => {
     if (!r[0]) return;
     const from = String(r[1] || '').trim();
     const to = String(r[2] || '').trim();

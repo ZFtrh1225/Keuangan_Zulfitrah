@@ -6,7 +6,7 @@
  *  - Apps Script API (POST): network-only (data must be fresh)
  */
 
-const CACHE_NAME = 'mtpro-v16-cashflow-zoom';
+const CACHE_NAME = 'mtpro-v17-sankey-preview';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -16,6 +16,7 @@ const STATIC_ASSETS = [
   './js/state.js',
   './js/api.js',
   './js/charts.js',
+  './js/cashflow-preview.js',
   './js/cashflow-sankey.js',
   './js/money-flow.js',
   './js/spending-trend.js',

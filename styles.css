@@ -3076,3 +3076,14 @@ html[data-theme="light"] .card-glass {
     font-size: 12px;
   }
 }
+
+.cf-preview[hidden], .cf-preview-tools [hidden],
+#cashflowSankeyWrap[hidden], #cashflowModalSankeyWrap[hidden] { display: none; }
+.cf-preview-tools { display: flex; justify-content: flex-end; gap: 12px; align-items: center; flex-wrap: wrap; margin-block: 10px; }
+.cf-preview-tools select { color: var(--t1); background: var(--card); padding: 5px; }
+.cf-preview-opt { cursor: pointer; }
+.cf-preview-plot { height: 380px; overflow: auto; }
+.modal .cf-preview-plot { height: min(65vh, 660px); }
+.cf-preview-plot svg text { fill: var(--t1); font: 12px sans-serif; }
+.cf-preview-plot svg tspan + tspan { fill: var(--t2); }
+.cf-preview-tip { z-index: 10000; padding: 8px 12px; border-radius: 8px; background: var(--card); color: var(--t1); box-shadow: 0 2px 10px #0004; }
