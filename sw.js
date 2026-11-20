@@ -6,7 +6,7 @@
  *  - Apps Script API (POST): network-only (data must be fresh)
  */
 
-const CACHE_NAME = 'mtpro-v14-debt-refresh';
+const CACHE_NAME = 'mtpro-v15-cashflow';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -16,6 +16,10 @@ const STATIC_ASSETS = [
   './js/state.js',
   './js/api.js',
   './js/charts.js',
+  './js/cashflow-sankey.js',
+  './js/money-flow.js',
+  './js/spending-trend.js',
+  './js/plan-features.js',
   './js/scenarios.js',
   './js/action-priorities.js',
   './js/dialog.js',

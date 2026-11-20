@@ -192,3 +192,46 @@ test('six months money flow contains balanced metrics without NaN', () => {
     assert.ok(!isNaN(m.expenses));
   });
 });
+
+test('cashflow cards render the ledger payload in category, wallet and monthly views', () => {
+  const { sandbox, ss } = setupBackend();
+  sandbox.initSheets_();
+  ss.getSheetByName('Income').appendRow(['2026-11-12', 'Gaji', 5000000, '', 'Cash']);
+  for (const amount of [800000, 18000, 50000, 20000, 18000, 46300]) {
+    ss.getSheetByName('Expenses').appendRow(['2026-11-13', 'Belanja', '', amount, '', 'Cash']);
+  }
+  const dashboard = sandbox.getDashboardData(11, 2026);
+  const elements = new Map();
+  const document = {
+    readyState: 'loading',
+    addEventListener() {},
+    querySelectorAll: () => [],
+    getElementById(id) {
+      if (!elements.has(id)) elements.set(id, {
+        getBoundingClientRect: () => ({ width: 600 }),
+        querySelectorAll: () => [],
+        classList: { contains: () => false }
+      });
+      return elements.get(id);
+    }
+  };
+  const window = {};
+  const context = vm.createContext({ window, document });
+  for (const file of ['formatters', 'cashflow-sankey', 'money-flow']) {
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'js', file + '.js'), 'utf8'), context);
+  }
+  const { cashflow, moneyFlow } = window.MT;
+  cashflow.render(dashboard);
+  moneyFlow.render(dashboard);
+  for (const mode of ['category', 'wallet']) {
+    cashflow.setViewMode(mode);
+    assert.match(elements.get('cashflowSankeyWrap').innerHTML, /data-name="Belanja" data-val="952300"/);
+  }
+  assert.equal(elements.get('cfNetBalance').textContent, 'Rp 4.047.700');
+  assert.equal(elements.get('mfIncomeVal').textContent, 'Rp 5.000.000');
+  assert.equal(elements.get('mfExpenseVal').textContent, 'Rp 952.300');
+  assert.equal(elements.get('mfBalanceVal').textContent, 'Rp 4.047.700');
+  assert.equal(elements.get('moneyFlowChartWrap').innerHTML.match(/class="money-flow-month-group"/g).length, 6);
+  moneyFlow.selectMonth(4);
+  assert.equal(elements.get('mfIncomeVal').textContent, 'Rp 0');
+});

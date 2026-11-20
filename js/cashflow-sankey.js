@@ -91,6 +91,8 @@
       incEntries = [['Pemasukan', totalInc]];
     }
 
+    const expenseCategories = d.top10 || [];
+
     // 2. Hub / Intermediate
     if (mode === 'wallet') {
       // Mode Dompet
@@ -119,9 +121,8 @@
 
       // Outflows dari wallets
       // Top categories
-      const topCats = (d.top10 && d.top10.length) ? d.top10 : [];
       let expTotalRecorded = 0;
-      topCats.forEach(([catName, amt]) => {
+      expenseCategories.forEach(({ name: catName, amount: amt }) => {
         const cVal = Number(amt) || 0;
         if (cVal > 0) {
           expTotalRecorded += cVal;
@@ -169,9 +170,8 @@
 
       // Hub -> Outflows
       // 1. Kategori Pengeluaran
-      const catList = (d.top10 && d.top10.length) ? d.top10 : [];
       let expRecorded = 0;
-      catList.forEach(([catName, amt], idx) => {
+      expenseCategories.forEach(({ name: catName, amount: amt }, idx) => {
         const val = Number(amt) || 0;
         if (val > 0) {
           expRecorded += val;
@@ -335,7 +335,7 @@
           data-val="${rp.value}"
           tabindex="0"
           role="img"
-          aria-label="${rp.src.name} ke ${rp.tgt.name}: ${fmtRp(rp.value)}"
+          aria-label="${escapeHtml(rp.src.name)} ke ${escapeHtml(rp.tgt.name)}: ${fmtRp(rp.value)}"
         />
       `;
     }).join('');
@@ -433,7 +433,7 @@
 
         tooltip.innerHTML = `
           <div style="font-size:11px; color:var(--t3); margin-bottom:2px;">Alur Kas</div>
-          <div style="font-weight:700; color:var(--t1);">${src} &rarr; ${tgt}</div>
+          <div style="font-weight:700; color:var(--t1);">${escapeHtml(src)} &rarr; ${escapeHtml(tgt)}</div>
           <div style="font-size:13px; font-weight:700; color:var(--accent); margin-top:3px;">
             ${fmtRp(val)} <span style="font-size:11px; color:var(--t3); font-weight:400;">(${pct}%)</span>
           </div>
@@ -470,11 +470,11 @@
         ng.querySelector('.sankey-node-rect').style.filter = 'brightness(1.25) drop-shadow(0 0 6px rgba(0,229,180,0.5))';
 
         tooltip.innerHTML = `
-          <div style="font-weight:700; color:var(--t1); font-size:13px;">${name}</div>
+          <div style="font-weight:700; color:var(--t1); font-size:13px;">${escapeHtml(name)}</div>
           <div style="font-size:13px; font-weight:700; color:var(--accent); margin-top:2px;">
             ${fmtRp(val)} <span style="font-size:11px; color:var(--t3); font-weight:400;">(${pct}% arus kas)</span>
           </div>
-          ${extra ? `<div style="font-size:11px; color:var(--t2); margin-top:3px;">${extra}</div>` : ''}
+          ${extra ? `<div style="font-size:11px; color:var(--t2); margin-top:3px;">${escapeHtml(extra)}</div>` : ''}
         `;
         positionTooltip(tooltip, e);
       };
