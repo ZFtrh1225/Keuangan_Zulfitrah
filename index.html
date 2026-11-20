@@ -199,6 +199,7 @@
             <div class="chart-subtitle">Pemasukan &rarr; Arus Kas/Dompet &rarr; Alokasi Pengeluaran, Tabungan &amp; Surplus</div>
           </div>
           <div class="cf-actions">
+            <label class="btn-pill cf-preview-opt"><input type="checkbox" id="cfPreviewEnabled"> New Sankey chart • PREVIEW</label>
             <div class="cf-mode-toggle" role="group" aria-label="Mode Tampilan Arus Kas">
               <button type="button" class="cf-mode-btn active" data-cf-mode="category">Kategori</button>
               <button type="button" class="cf-mode-btn" data-cf-mode="wallet">Dompet</button>
@@ -223,6 +224,13 @@
         </div>
 
         <div id="cashflowSankeyWrap" class="sankey-container-wrap" aria-label="Diagram Sankey Arus Kas"></div>
+        <section class="cf-preview" hidden aria-label="New Sankey chart • PREVIEW">
+          <div class="cf-preview-tools">
+            <button type="button" class="btn-pill" data-cf-back hidden>Kembali ke semua alur</button>
+            <label>Urutkan <select data-cf-sort><option value="auto">Otomatis</option><option value="ascending">Nominal terkecil</option><option value="descending">Nominal terbesar</option></select></label>
+          </div>
+          <div class="cf-preview-plot" role="region" aria-label="Diagram alur kas interaktif"></div>
+        </section>
       </div>
     </section>
 
@@ -1860,6 +1868,13 @@
           <button type="button" class="cf-mode-btn" data-cf-mode="wallet">Berdasarkan Dompet</button>
         </div>
         <div id="cashflowModalSankeyWrap" style="width: 100%; min-height: 480px;"></div>
+        <section class="cf-preview" hidden aria-label="New Sankey chart • PREVIEW">
+          <div class="cf-preview-tools">
+            <button type="button" class="btn-pill" data-cf-back hidden>Kembali ke semua alur</button>
+            <label>Urutkan <select data-cf-sort><option value="auto">Otomatis</option><option value="ascending">Nominal terkecil</option><option value="descending">Nominal terbesar</option></select></label>
+          </div>
+          <div class="cf-preview-plot" role="region" aria-label="Diagram alur kas interaktif"></div>
+        </section>
       </div>
     </div>
   </div>
@@ -1907,6 +1922,7 @@
   <script src="js/api.js" defer></script>
   <script src="js/dialog.js" defer></script>
   <script src="js/charts.js" defer></script>
+  <script src="js/cashflow-preview.js" defer></script>
   <script src="js/cashflow-sankey.js" defer></script>
   <script src="js/spending-trend.js" defer></script>
   <script src="js/money-flow.js" defer></script>

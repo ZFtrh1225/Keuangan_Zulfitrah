@@ -552,10 +552,14 @@
   function render(dashboardData) {
     if (dashboardData) cachedDashboardData = dashboardData;
     const d = cachedDashboardData || (MT.state && MT.state.dashboard);
-    if (!d) return;
+    if (!d) {
+      MT.cashflowPreview?.draw('cashflowSankeyWrap', null, currentViewMode);
+      return;
+    }
 
-    const sankeyData = buildSankeyData(d, currentViewMode);
-    renderSvgSankey('cashflowSankeyWrap', sankeyData, false);
+    drawChart('cashflowSankeyWrap', d, false);
+    const modal = document.getElementById('cashflowModalOverlay');
+    if (modal?.classList.contains('open')) drawChart('cashflowModalSankeyWrap', d, true);
 
     // Update stats header pada card
     const summary = d.summary || {};
@@ -578,6 +582,11 @@
   /**
    * Buka modal dialog zoom fullscreen
    */
+  function drawChart(id, data, expanded) {
+    if (MT.cashflowPreview && MT.cashflowPreview.draw(id, data, currentViewMode)) return;
+    renderSvgSankey(id, buildSankeyData(data, currentViewMode), expanded);
+  }
+
   function openZoomModal() {
     const modal = document.getElementById('cashflowModalOverlay');
     if (!modal) return;
@@ -585,8 +594,7 @@
     modal.setAttribute('aria-hidden', 'false');
 
     const d = cachedDashboardData || (MT.state && MT.state.dashboard);
-    const sankeyData = buildSankeyData(d, currentViewMode);
-    renderSvgSankey('cashflowModalSankeyWrap', sankeyData, true);
+    drawChart('cashflowModalSankeyWrap', d, true);
   }
 
   function closeZoomModal() {
@@ -602,11 +610,7 @@
       btn.classList.toggle('active', btn.getAttribute('data-cf-mode') === mode);
     });
     render();
-    const modal = document.getElementById('cashflowModalOverlay');
-    if (modal && modal.classList.contains('open')) {
-      const d = cachedDashboardData || (MT.state && MT.state.dashboard);
-      renderSvgSankey('cashflowModalSankeyWrap', buildSankeyData(d, currentViewMode), true);
-    }
+
   }
 
   function resize() {
@@ -617,6 +621,7 @@
 
   // Setup DOM events saat DOM siap
   function init() {
+    MT.cashflowPreview?.init(() => setViewMode(currentViewMode));
     const btnZoom = document.getElementById('btnCashflowZoom');
     if (btnZoom) btnZoom.addEventListener('click', openZoomModal);
 
