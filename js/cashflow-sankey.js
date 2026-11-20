@@ -26,6 +26,34 @@
 
   let currentViewMode = 'category'; // 'category' | 'wallet'
   let cachedDashboardData = null;
+  let range = 'All', rangeEnabled = false, rangeData = null, rangeRequest = 0;
+
+  function status(message) {
+    document.querySelectorAll('[data-cf-range-status]').forEach(el => { el.textContent = message; });
+  }
+
+  async function loadRange() {
+    const seq = ++rangeRequest;
+    rangeData = null;
+    status('Memuat arus kas…');
+    render();
+    try {
+      const data = await MT.api.getCashflowRange(range);
+      if (seq !== rangeRequest) return;
+      if (!data.success || !Array.isArray(data.cashflowEntries)) throw new Error();
+      rangeData = data;
+      status(data.start ? data.start + ' hingga ' + data.end : 'Seluruh riwayat hingga ' + data.end);
+      render();
+    } catch {
+      if (seq !== rangeRequest) return;
+      status('Gagal memuat periode. Muat ulang dashboard dan pastikan Code.gs terbaru sudah diterbitkan.');
+    }
+  }
+
+  function activeData() {
+    return rangeEnabled ? rangeData : cachedDashboardData || MT.state?.dashboard;
+  }
+
   let activeTooltip = null;
 
   /**
@@ -212,19 +240,10 @@
     const padding = Math.max(12, Math.min(24, height * 0.04));
     const nodeWidth = width < 480 ? 12 : 18;
 
-    // Kelompokkan node berdasarkan col (0, 1, 2)
-    const cols = [[], [], []];
-    nodes.forEach((n) => {
-      const c = Math.max(0, Math.min(2, n.col || 0));
-      cols[c].push(n);
-    });
-
-    // Hitung posisi x tiap kolom
-    const colX = [
-      4,
-      Math.round(width / 2 - nodeWidth / 2),
-      width - nodeWidth - 4
-    ];
+    const lastColumn = data.lastColumn || 2;
+    const cols = Array.from({ length: lastColumn + 1 }, () => []);
+    nodes.forEach(n => cols[n.col].push(n));
+    const colX = cols.map((_, i) => 4 + Math.round((width - nodeWidth - 8) * i / lastColumn));
 
     // Hitung y dan height tiap node
     cols.forEach((colNodes, cIdx) => {
@@ -297,7 +316,7 @@
       container.innerHTML = `
         <div class="empty-state" style="padding: 40px 16px;">
           <div class="empty-state-icon">🌊</div>
-          <div>Belum ada data arus kas untuk ditampilkan bulan ini.</div>
+          <div>Belum ada data arus kas untuk periode ini.</div>
           <div class="muted micro-label" style="margin-top:6px;">Catat pemasukan atau pengeluaran untuk melihat visualisasi alur kas.</div>
         </div>
       `;
@@ -344,8 +363,8 @@
     const isMobile = width < 600;
     const nodesMarkup = layout.nodes.map((n, i) => {
       const isLeft = n.col === 0;
-      const isRight = n.col === 2;
-      const isCenter = n.col === 1;
+      const isRight = n.col === (sankeyData.lastColumn || 2);
+      const isCenter = !isLeft && !isRight;
 
       let labelX = n.x + n.width + 6;
       let textAnchor = 'start';
@@ -550,8 +569,25 @@
    * Render utama Cashflow Sankey ke card dashboard
    */
   function render(dashboardData) {
-    if (dashboardData) cachedDashboardData = dashboardData;
-    const d = cachedDashboardData || (MT.state && MT.state.dashboard);
+    if (dashboardData) {
+      cachedDashboardData = dashboardData;
+      if (rangeEnabled) { loadRange(); return; }
+    }
+    const d = activeData();
+    if (rangeEnabled && !d) {
+      for (const id of ['cashflowSankeyWrap', 'cashflowModalSankeyWrap']) {
+        const wrap = document.getElementById(id);
+        if (wrap) {
+          wrap.hidden = true;
+          if (wrap.nextElementSibling) wrap.nextElementSibling.hidden = true;
+        }
+      }
+      for (const id of ['cfTotalIncome', 'cfTotalExpense', 'cfNetBalance']) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = '…';
+      }
+      return;
+    }
     if (!d) {
       MT.cashflowPreview?.draw('cashflowSankeyWrap', null, currentViewMode);
       return;
@@ -584,6 +620,21 @@
    */
   function drawChart(id, data, expanded) {
     if (MT.cashflowPreview && MT.cashflowPreview.draw(id, data, currentViewMode)) return;
+    if (rangeEnabled && data) {
+      const graph = MT.cashflowPreview.buildGraph(data.cashflowEntries, currentViewMode);
+      const funded = new Set(graph.links.filter(l => graph.nodes[l.source].kind === 'account' &&
+        graph.nodes[l.target].kind === 'account').map(l => l.target));
+      const lastColumn = funded.size ? 3 : 2;
+      const nodes = graph.nodes.map((n, i) => {
+        let col = lastColumn;
+        if (n.kind === 'income' || n.kind === 'deficit') col = 0;
+        if (n.kind === 'cash_flow' || n.kind === 'account') col = funded.has(i) ? 2 : 1;
+        return { ...n, col };
+      });
+      const totalFlow = nodes.filter(n => n.col === 0).reduce((sum, n) => sum + n.value, 0);
+      renderSvgSankey(id, { nodes, links: graph.links, totalFlow, lastColumn }, expanded);
+      return;
+    }
     renderSvgSankey(id, buildSankeyData(data, currentViewMode), expanded);
   }
 
@@ -593,8 +644,9 @@
     modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');
 
-    const d = cachedDashboardData || (MT.state && MT.state.dashboard);
-    drawChart('cashflowModalSankeyWrap', d, true);
+    const d = activeData();
+    if (rangeEnabled && !d) render();
+    else drawChart('cashflowModalSankeyWrap', d, true);
   }
 
   function closeZoomModal() {
@@ -621,6 +673,13 @@
 
   // Setup DOM events saat DOM siap
   function init() {
+    const filters = document.querySelectorAll('[data-cf-range]');
+    rangeEnabled = filters.length > 0 && !!MT.api?.getCashflowRange;
+    filters.forEach(filter => filter.addEventListener('change', () => {
+      range = filter.value;
+      filters.forEach(other => { other.value = range; });
+      loadRange();
+    }));
     MT.cashflowPreview?.init(() => setViewMode(currentViewMode));
     const btnZoom = document.getElementById('btnCashflowZoom');
     if (btnZoom) btnZoom.addEventListener('click', openZoomModal);
