@@ -324,3 +324,51 @@ test('preview opt-in persists, handles missing data and gives the existing chart
   assert.equal(legacy.hidden, false);
   assert.equal(panel.hidden, true);
 });
+
+test('six cashflow windows include their first day and exclude future ledger rows', () => {
+  const { sandbox, ss } = setupBackend('2026-11-21T12:00:00Z');
+  sandbox.initSheets_();
+  const income = ss.getSheetByName('Income');
+  for (const age of [0, 1, 6, 7, 29, 30, 179, 180, 364, 365, -1]) {
+    const day = new Date(Date.UTC(2026, 10, 21 - age)).toISOString().slice(0, 10);
+    income.appendRow([day, 'Gaji', 1000, '', 'Cash']);
+  }
+  ss.getSheetByName('Expenses').appendRow(['2026-11-15', 'Hunian', 'Kos', 200, '', 'Cash']);
+  ss.getSheetByName('Savings').appendRow(['2026-11-21', 'Dana', 50, '', 'Cash', 'BRI']);
+  for (const [range, count] of Object.entries({ '1D': 1, '7D': 3, '1M': 5, '6M': 7, '1Y': 9, All: 10 })) {
+    const result = sandbox.getCashflowRange_(range);
+    assert.equal(result.summary.totalInc, count * 1000, range);
+    assert.equal(result.summary.totalExp, range === '1D' ? 0 : 200);
+    assert.equal(result.summary.totalSav, 50);
+    assert.equal(result.cashflowEntries.find(e => e[0] === 'income')[4], count * 1000);
+  }
+  assert.equal(sandbox.getCashflowRange_('90D').success, false);
+});
+
+test('cashflow keeps both selectors in sync and ignores a slower previous range response', async () => {
+  const pending = {};
+  const filters = [{}, {}].map(el => Object.assign(el, { addEventListener(_, fn) { this.change = fn; } }));
+  const nodes = new Map();
+  const document = {
+    readyState: 'complete',
+    querySelectorAll: selector => selector === '[data-cf-range]' ? filters : [],
+    getElementById(id) {
+      if (!nodes.has(id)) nodes.set(id, { addEventListener() {}, classList: { contains: () => false } });
+      return nodes.get(id);
+    }
+  };
+  const drawn = [];
+  const MT = { api: { getCashflowRange: range => new Promise(resolve => { pending[range] = resolve; }) },
+    cashflowPreview: { init() {}, draw(id, data) { drawn.push(data.range); return true; } } };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'js/cashflow-sankey.js'), 'utf8'),
+    { document, window: { MT, addEventListener() {} } });
+  MT.cashflow.render({ summary: {} });
+  filters[1].value = '7D';
+  filters[1].change();
+  assert.equal(filters[0].value, '7D');
+  for (const range of ['7D', 'All']) {
+    pending[range]({ success: true, cashflowEntries: [], range, summary: { totalInc: 800 } });
+    await new Promise(resolve => setImmediate(resolve));
+  }
+  assert.deepEqual(drawn, ['7D']);
+});

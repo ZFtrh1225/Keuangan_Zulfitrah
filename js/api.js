@@ -171,6 +171,7 @@
 
   MT.api = {
     API_URL, call, getSecret, setSecret,
+    getCashflowRange: range => call('getCashflowRange', { range }),
     getDashboardData, listRecentTransactions, listGoals, getSettings, getCategories,
     listTemplates, listBills, listWallets, listWalletReconciliations, listNetWorthSnapshots, listTransfers, getAuthStatus,
     addIncome, addExpense, addSaving, addAsset, addDebt, addGoal, addGoalDeposit,

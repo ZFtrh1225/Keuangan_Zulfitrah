@@ -199,6 +199,9 @@
             <div class="chart-subtitle">Pemasukan &rarr; Arus Kas/Dompet &rarr; Alokasi Pengeluaran, Tabungan &amp; Surplus</div>
           </div>
           <div class="cf-actions">
+            <select class="btn-pill" data-cf-range aria-label="Periode visualisasi alur kas">
+              <option>1D</option><option>7D</option><option>1M</option><option>6M</option><option>1Y</option><option selected>All</option>
+            </select>
             <label class="btn-pill cf-preview-opt"><input type="checkbox" id="cfPreviewEnabled"> New Sankey chart • PREVIEW</label>
             <div class="cf-mode-toggle" role="group" aria-label="Mode Tampilan Arus Kas">
               <button type="button" class="cf-mode-btn active" data-cf-mode="category">Kategori</button>
@@ -223,6 +226,7 @@
           </div>
         </div>
 
+        <div class="muted micro-label" role="status" data-cf-range-status></div>
         <div id="cashflowSankeyWrap" class="sankey-container-wrap" aria-label="Diagram Sankey Arus Kas"></div>
         <section class="cf-preview" hidden aria-label="New Sankey chart • PREVIEW">
           <div class="cf-preview-tools">
@@ -1864,9 +1868,13 @@
       </div>
       <div class="modal-body sankey-modal-body">
         <div class="cf-mode-toggle mb-14" style="margin-bottom:12px;">
+          <select class="btn-pill" data-cf-range aria-label="Periode visualisasi alur kas">
+              <option>1D</option><option>7D</option><option>1M</option><option>6M</option><option>1Y</option><option selected>All</option>
+            </select>
           <button type="button" class="cf-mode-btn active" data-cf-mode="category">Berdasarkan Kategori</button>
           <button type="button" class="cf-mode-btn" data-cf-mode="wallet">Berdasarkan Dompet</button>
         </div>
+        <div class="muted micro-label" role="status" data-cf-range-status></div>
         <div id="cashflowModalSankeyWrap" style="width: 100%; min-height: 480px;"></div>
         <section class="cf-preview" hidden aria-label="New Sankey chart • PREVIEW">
           <div class="cf-preview-tools">

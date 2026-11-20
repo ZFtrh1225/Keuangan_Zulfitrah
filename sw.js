@@ -6,7 +6,7 @@
  *  - Apps Script API (POST): network-only (data must be fresh)
  */
 
-const CACHE_NAME = 'mtpro-v17-sankey-preview';
+const CACHE_NAME = 'mtpro-v18-cashflow-period';
 const STATIC_ASSETS = [
   './',
   './index.html',

@@ -156,6 +156,7 @@ function handleAction_(e) {
   try {
     switch (action) {
       // ── Read ──
+      case 'getCashflowRange':       return getCashflowRange_(data.range);
       case 'getDashboardData':       return getDashboardData(data.month, data.year, { fresh: data.fresh === true });
       case 'listRecentTransactions': return listRecentTransactions(data.month, data.year, data.limit);
       case 'listGoals':              return listGoals();
@@ -2518,6 +2519,29 @@ function normCat_(raw) {
   const s = (raw == null ? '' : String(raw)).trim();
   if (!s || s.toLowerCase() === 'undefined' || s.toLowerCase() === 'null') return 'Lain-lain';
   return s;
+}
+
+// Rolling windows end on the current ledger date, inclusive.
+function getCashflowRange_(range) {
+  const days = { '1D': 1, '7D': 7, '1M': 30, '6M': 180, '1Y': 365, All: 0 };
+  if (!Object.prototype.hasOwnProperty.call(days, range)) return { success: false, error: 'Periode tidak dikenal.' };
+  const end = toIso_(new Date());
+  const startDate = new Date(end + 'T00:00:00Z');
+  startDate.setUTCDate(startDate.getUTCDate() - days[range] + 1);
+  const start = days[range] ? startDate.toISOString().slice(0, 10) : '';
+  function rows(sheet) {
+    return getSheetData_(sheet).filter(row => {
+      const raw = row[0];
+      const day = typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : toIso_(raw);
+      return day && day <= end && day >= start;
+    });
+  }
+  const income = rows(SHEET_NAMES.INCOME), expenses = rows(SHEET_NAMES.EXPENSE);
+  const savings = rows(SHEET_NAMES.SAVING);
+  const totalInc = sum_(income, 2), totalExp = sum_(expenses, 3), totalSav = sum_(savings, 2);
+  return { success: true, range, start, end,
+    summary: { totalInc, totalExp, totalSav, balance: totalInc - totalExp - totalSav },
+    cashflowEntries: cashflowEntries_(income, expenses, savings, rows(SHEET_NAMES.TRANSFER)) };
 }
 
 function cashflowEntries_(income, expenses, savings, transfers) {
