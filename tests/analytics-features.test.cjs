@@ -235,3 +235,34 @@ test('cashflow cards render the ledger payload in category, wallet and monthly v
   moneyFlow.selectMonth(4);
   assert.equal(elements.get('mfIncomeVal').textContent, 'Rp 0');
 });
+
+test('Perbesar opens the visible Sankey overlay and both dismiss controls close it', () => {
+  const elements = new Map();
+  function element(id) {
+    if (!elements.has(id)) {
+      const classes = new Set();
+      const listeners = new Map();
+      elements.set(id, {
+        classList: { add: c => classes.add(c), remove: c => classes.delete(c), contains: c => classes.has(c) },
+        setAttribute(name, value) { this[name] = value; },
+        addEventListener(name, listener) { listeners.set(name, listener); },
+        click() { listeners.get('click')({ target: this }); }
+      });
+    }
+    return elements.get(id);
+  }
+  const document = { readyState: 'complete', getElementById: element, querySelectorAll: () => [] };
+  const window = { addEventListener() {} };
+  const code = fs.readFileSync(path.join(__dirname, '..', 'js/cashflow-sankey.js'), 'utf8');
+  vm.runInNewContext(code, { document, window });
+  const overlay = element('cashflowModalOverlay');
+  for (const dismiss of [element('btnCloseCashflowModal'), overlay]) {
+    element('btnCashflowZoom').click();
+    assert.ok(overlay.classList.contains('open'));
+    assert.equal(overlay['aria-hidden'], 'false');
+    assert.match(element('cashflowModalSankeyWrap').innerHTML, /Belum ada data/);
+    dismiss.click();
+    assert.equal(overlay.classList.contains('open'), false);
+    assert.equal(overlay['aria-hidden'], 'true');
+  }
+});

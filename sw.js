@@ -6,7 +6,7 @@
  *  - Apps Script API (POST): network-only (data must be fresh)
  */
 
-const CACHE_NAME = 'mtpro-v15-cashflow';
+const CACHE_NAME = 'mtpro-v16-cashflow-zoom';
 const STATIC_ASSETS = [
   './',
   './index.html',

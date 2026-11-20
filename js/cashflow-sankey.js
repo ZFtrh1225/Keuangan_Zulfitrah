@@ -581,7 +581,7 @@
   function openZoomModal() {
     const modal = document.getElementById('cashflowModalOverlay');
     if (!modal) return;
-    modal.classList.add('active');
+    modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');
 
     const d = cachedDashboardData || (MT.state && MT.state.dashboard);
@@ -592,7 +592,7 @@
   function closeZoomModal() {
     const modal = document.getElementById('cashflowModalOverlay');
     if (!modal) return;
-    modal.classList.remove('active');
+    modal.classList.remove('open');
     modal.setAttribute('aria-hidden', 'true');
   }
 
@@ -603,7 +603,7 @@
     });
     render();
     const modal = document.getElementById('cashflowModalOverlay');
-    if (modal && modal.classList.contains('active')) {
+    if (modal && modal.classList.contains('open')) {
       const d = cachedDashboardData || (MT.state && MT.state.dashboard);
       renderSvgSankey('cashflowModalSankeyWrap', buildSankeyData(d, currentViewMode), true);
     }
